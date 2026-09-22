@@ -1,0 +1,16 @@
+{
+  "name": "medical-billing-coding-portal-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev:web": "pnpm --filter @medical-portal/web dev",
+    "build:web": "pnpm --filter @medical-portal/web build",
+    "lint:web": "pnpm --filter @medical-portal/web lint",
+    "build": "pnpm --filter @medical-portal/web build",
+    "lint": "pnpm --filter @medical-portal/web lint",
+    "test": "pnpm --filter @medical-portal/shared-types test"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}

@@ -1,0 +1,36 @@
+METROPOLITAN HEALTH EMERGENCY DEPARTMENT
+EMERGENCY ENCOUNTER RECORD (SYNTHETIC RECORD - NO REAL PHI)
+
+Date of Service: 2026-09-22
+Place of Service: Emergency Department (POS 23)
+Attending Physician: Dr. Jane Doe, MD
+Patient Pseudonymous ID: SYNTH-ER-90412
+
+CHIEF COMPLAINT:
+Severe right lower quadrant pain and nausea x 12 hours.
+
+HISTORY OF PRESENT ILLNESS:
+Patient is an adult presenting to the Emergency Department with acute onset of severe right lower quadrant abdominal pain accompanied by fever and nausea. No prior history of similar symptoms.
+
+PHYSICAL EXAMINATION:
+Vitals: T 38.2 C, BP 128/82, HR 96, RR 18.
+Abdomen: Moderate tenderness in the right lower quadrant with positive McBurney sign and localized guarding.
+
+DIAGNOSTIC WORKUP & ORDERS:
+- CT abdomen and pelvis with contrast material: Demonstrates dilated, non-compressible appendix with periappendiceal fat stranding consistent with acute appendicitis.
+- EKG 12-lead: Normal sinus rhythm.
+- IV fluid hydration administered.
+
+ASSESSMENT & DOCUMENTED DIAGNOSIS:
+1. Acute appendicitis (unspecified)
+2. Right lower quadrant pain
+
+MEDICAL DECISION MAKING:
+High complexity decision making. Patient evaluated in the Emergency Department for acute, life-threatening surgical abdomen requiring emergent surgical consultation and intervention.
+
+PLAN & INTERVENTIONS:
+- Emergent General Surgery consult obtained.
+- Patient scheduled for Laparoscopic appendectomy.
+- Pre-operative antibiotics and intravenous hydration started.
+
+Electronically Signed By: Dr. Jane Doe, MD (2026-09-22 14:30)
