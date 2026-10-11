@@ -1,86 +1,49 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { Shield, Building, CheckCircle2 } from 'lucide-react';
-import { getStoredUser } from '@/lib/api';
-import { User as UserType } from '@/lib/types';
+import { useEffect, useState } from 'react';
+import { api } from '@/lib/api';
+import { Shield, Fingerprint, Database, Layers } from 'lucide-react';
+
+type Capabilities = {
+  mode: string; storage: string; ocr: string; queue: string; catalog: string; ruleset: string;
+  owner_restricted: boolean; mfa_configured: boolean; session_minutes: number; step_up_seconds: number;
+};
 
 export default function SettingsPage() {
-  const [user, setUser] = useState<UserType | null>(null);
-
+  const [config, setConfig] = useState<Capabilities | null>(null);
+  const [error, setError] = useState('');
+  const [email, setEmail] = useState('');
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setUser(getStoredUser());
-    }, 0);
-    return () => clearTimeout(timer);
+    Promise.all([api.getCapabilities(), api.getMe()]).then(([capabilities, user]) => {
+      setConfig(capabilities); setEmail(user.email);
+    }).catch(err => setError(err.message));
   }, []);
-
-  return (
-    <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">System &amp; Tenant Settings</h1>
-        <p className="text-xs text-slate-500 mt-0.5">
-          Tenant organization profile, RBAC authorization, and HIPAA compliance policies.
-        </p>
+  return <div className="mx-auto max-w-5xl px-6 py-10 space-y-6">
+    <div><p className="text-xs uppercase tracking-widest text-blue-600 font-semibold">Workspace configuration</p>
+      <h1 className="text-2xl font-bold mt-2">Settings & policy</h1>
+      <p className="text-sm text-slate-500 mt-2">Runtime controls and the policy used by your evidence workflow.</p></div>
+    {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+    {!config ? <p className="text-sm text-slate-500">Loading configuration...</p> : <>
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-900">Synthetic development mode. Sample catalogs and rules are active. Production processing is disabled.</div>
+      <div className="grid md:grid-cols-2 gap-5">
+        {[{icon: Fingerprint, title: 'Owner & session', rows: [
+          ['Signed-in account', email], ['Named owner restriction', config.owner_restricted ? 'Enabled' : 'Not configured'],
+          ['Authenticator MFA', config.mfa_configured ? 'Enabled' : 'Not configured'],
+          ['Session lifetime', `${config.session_minutes} minutes`], ['Approval / export sign-in freshness', `${config.step_up_seconds / 60} minutes`],
+        ]}, {icon: Database, title: 'Processing', rows: [
+          ['Storage adapter', config.storage], ['Text extraction', config.ocr], ['Worker delivery', config.queue],
+          ['Image and scanned PDF OCR', 'Adapter required'],
+        ]}, {icon: Layers, title: 'Versioned policy', rows: [
+          ['Catalog', config.catalog], ['Ruleset', config.ruleset], ['Active profiles', 'Emergency department; Professional / Office'],
+          ['Full NCCI policy package', 'Not configured'],
+        ]}, {icon: Shield, title: 'Review controls', rows: [
+          ['Evidence', 'Exact source spans and document hashes'], ['Source changes', 'New snapshot; approval invalidated'],
+          ['Export', 'Approved candidates only; policy rechecked'], ['Manifest', 'HMAC-SHA256 integrity signature'],
+        ]}].map(card => <section key={card.title} className="bg-white border border-slate-200 rounded-xl p-6">
+          <h2 className="font-semibold flex items-center gap-2 mb-4"><card.icon size={18} className="text-blue-600" />{card.title}</h2>
+          <dl className="space-y-3">{card.rows.map(([label, value]) => <div key={label} className="flex justify-between gap-6 text-xs"><dt className="text-slate-500">{label}</dt><dd className="font-medium text-right">{value}</dd></div>)}</dl>
+        </section>)}
       </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* User & Org Profile Card */}
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-xs space-y-4">
-          <div className="flex items-center space-x-2 border-b border-slate-100 pb-3">
-            <Building className="h-5 w-5 text-blue-600" />
-            <h2 className="text-sm font-bold text-slate-900">Tenant Identity</h2>
-          </div>
-
-          <div className="space-y-3 text-xs">
-            <div>
-              <span className="text-slate-400 block font-medium">Organization ID:</span>
-              <span className="font-mono text-slate-800 font-semibold">{user?.organization_id || 'org-1-uuid'}</span>
-            </div>
-            <div>
-              <span className="text-slate-400 block font-medium">Authenticated Account:</span>
-              <span className="text-slate-800 font-semibold">{user?.email || 'coder@apexhealth.org'}</span>
-            </div>
-            <div>
-              <span className="text-slate-400 block font-medium">Active RBAC Role:</span>
-              <span className="inline-block mt-0.5 px-2 py-0.5 text-[10px] font-bold uppercase rounded-md bg-emerald-100 text-emerald-800">
-                {user?.role || 'Coder'}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Security Controls Card */}
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-xs space-y-4">
-          <div className="flex items-center space-x-2 border-b border-slate-100 pb-3">
-            <Shield className="h-5 w-5 text-emerald-600" />
-            <h2 className="text-sm font-bold text-slate-900">Security &amp; HIPAA Controls</h2>
-          </div>
-
-          <div className="space-y-2.5 text-xs text-slate-600">
-            <div className="flex items-center space-x-2">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-              <span>Zero-Trust Organization Scoping on every database query</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-              <span>Client-submitted organization_id rejected server-side</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-              <span>Magic byte verification &amp; SHA-256 integrity validation</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-              <span>Prompt injection defense for uploaded clinical records</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-              <span>PHI-sanitized structured application logging</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+    </>}
+  </div>;
 }

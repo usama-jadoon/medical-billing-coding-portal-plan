@@ -39,9 +39,9 @@ export default function DashboardPage() {
     };
   }, []);
 
-  const reviewCount = encounters.filter((e) => e.status === 'review').length;
-  const approvedCount = encounters.filter((e) => e.status === 'approved').length;
-  const draftCount = encounters.filter((e) => e.status === 'draft' || e.status === 'processing').length;
+  const reviewCount = encounters.filter((e) => ['review', 'review_required'].includes(e.status)).length;
+  const approvedCount = encounters.filter((e) => ['approved', 'exported'].includes(e.status)).length;
+  const draftCount = encounters.filter((e) => ['draft', 'created', 'ingesting'].includes(e.status)).length;
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-8">
@@ -116,13 +116,13 @@ export default function DashboardPage() {
                 {reviewCount} Encounter{reviewCount > 1 ? 's' : ''} Ready in Review Queue
               </div>
               <div className="text-[11px] text-amber-700">
-                AI proposed candidates are linked to evidence and waiting for certified coder approval.
+                Proposed candidates are linked to evidence and waiting for your review.
               </div>
             </div>
           </div>
 
           <Link
-            href="/encounters?status=review"
+            href="/encounters?status=review_required"
             className="inline-flex items-center space-x-1 text-xs font-bold text-amber-900 hover:text-amber-950 underline"
           >
             <span>Open Review Queue</span>

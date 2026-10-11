@@ -28,6 +28,12 @@ export function Navbar() {
     return () => clearTimeout(timer);
   }, [pathname]);
 
+  useEffect(() => {
+    const expired = () => router.replace('/login');
+    window.addEventListener('auth-expired', expired);
+    return () => window.removeEventListener('auth-expired', expired);
+  }, [router]);
+
   if (pathname === '/login') {
     return null;
   }
@@ -40,7 +46,7 @@ export function Navbar() {
   const navItems = [
     { label: 'Dashboard', href: '/dashboard', icon: Activity },
     { label: 'Encounters', href: '/encounters', icon: FileText },
-    { label: 'Review Queue', href: '/encounters?status=review', icon: CheckCircle },
+    { label: 'Review Queue', href: '/encounters?status=review_required', icon: CheckCircle },
     { label: 'References', href: '/references', icon: BookOpen },
     { label: 'Audit', href: '/audit', icon: ShieldCheck },
     { label: 'Settings', href: '/settings', icon: Settings },
@@ -128,6 +134,9 @@ export function Navbar() {
           )}
         </div>
       </div>
+      <nav className="md:hidden flex gap-3 px-4 pb-2 overflow-x-auto text-xs font-semibold text-slate-600">
+        {navItems.map(item => <Link key={item.label} href={item.href} className="whitespace-nowrap">{item.label}</Link>)}
+      </nav>
     </header>
   );
 }

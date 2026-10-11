@@ -2,6 +2,7 @@
   "name": "medical-billing-coding-portal-monorepo",
   "version": "1.0.0",
   "private": true,
+  "packageManager": "pnpm@11.15.1",
   "scripts": {
     "dev:web": "pnpm --filter @medical-portal/web dev",
     "build:web": "pnpm --filter @medical-portal/web build",

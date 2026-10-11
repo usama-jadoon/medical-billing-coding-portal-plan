@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY pyproject.toml /app/
 RUN pip install --no-cache-dir \
-    fastapi uvicorn[standard] pydantic pydantic-settings sqlalchemy psycopg[binary] aiosqlite alembic python-multipart pyjwt bcrypt pypdf httpx "pydantic[email]" aiofiles redis celery
+    fastapi uvicorn[standard] pydantic pydantic-settings sqlalchemy asyncpg aiosqlite alembic python-multipart pyjwt bcrypt pypdf httpx "pydantic[email]"
 
 COPY services/ /app/services/
 

@@ -10,7 +10,9 @@ class Settings(BaseSettings):
     PORT: int = 8000
     SECRET_KEY: str = "insecure-default-secret-key-change-in-production-for-jwt"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    STEP_UP_MAX_AGE_SECONDS: int = 300
+    OWNER_TOTP_SECRET: str = ""
 
     # Database
     DATABASE_URL: str = Field(
@@ -35,6 +37,8 @@ class Settings(BaseSettings):
 
     # OCR
     OCR_PROVIDER: str = "local"  # "local", "mock"
+    OWNER_EMAIL: str = ""
+    QUEUE_BACKEND: str = "sync"  # sync for local demo, outbox for durable worker
 
     # CORS
     CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"

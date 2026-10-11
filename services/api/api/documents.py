@@ -1,17 +1,18 @@
 import hashlib
 import uuid
-import io
+from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from services.api.db.session import get_db
-from services.api.db.models import Encounter, Document, AuditEvent, User
+from services.api.db.models import Encounter, Document, AuditEvent, User, OutboxEvent
 from services.api.security.tenant import get_current_user, get_current_tenant
 from services.api.security.permissions import require_roles, Roles
 from services.api.storage import get_storage
 from services.worker.tasks.pipeline import run_encounter_pipeline
 from services.api.utils.logging import audit_logger
+from services.api.config import settings
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -38,6 +39,8 @@ MAX_FILE_SIZE = 25 * 1024 * 1024  # 25 MB
 
 
 def validate_file_signature(content: bytes, filename: str, mime_type: str) -> None:
+    if not content:
+        raise HTTPException(400, "Empty files are not accepted.")
     if len(content) > MAX_FILE_SIZE:
         raise HTTPException(
             status_code=getattr(status, "HTTP_413_CONTENT_TOO_LARGE", 413),
@@ -53,13 +56,22 @@ def validate_file_signature(content: bytes, filename: str, mime_type: str) -> No
         )
 
     # Allow plain text synthetic test files
-    if lower_name.endswith(".txt") or mime_type == "text/plain":
+    if lower_name.endswith(".txt"):
+        if mime_type != "text/plain" or b"\x00" in content:
+            raise HTTPException(400, "Invalid text document.")
+        try:
+            content.decode("utf-8")
+        except UnicodeDecodeError:
+            raise HTTPException(400, "Text documents must be UTF-8.")
         return
 
     # Check magic bytes
     signature_matched = False
     for magic, expected_mime in MAGIC_BYTES.items():
         if content.startswith(magic):
+            expected_extensions = {"application/pdf": {".pdf"}, "image/png": {".png"}, "image/jpeg": {".jpg", ".jpeg"}, "image/tiff": {".tif", ".tiff"}}
+            if mime_type != expected_mime or Path(lower_name).suffix not in expected_extensions[expected_mime]:
+                raise HTTPException(400, "File extension, MIME type and signature must agree.")
             signature_matched = True
             break
 
@@ -79,6 +91,7 @@ async def upload_document(
 ):
     require_roles([Roles.OWNER, Roles.ADMIN, Roles.CODER, Roles.REVIEWER])(current_user)
     org_id = current_user.organization_id
+    actor_id = current_user.id
 
     # Verify encounter belongs to this organization
     enc_stmt = select(Encounter).where(
@@ -92,8 +105,11 @@ async def upload_document(
             detail="Encounter not found for your organization.",
         )
 
-    content = await file.read()
-    filename = file.filename or "record.pdf"
+    if encounter.status in {"ingesting", "ocr_ready", "facts_ready", "candidates_ready", "validated"}:
+        raise HTTPException(409, "A document is already being processed.")
+    content = await file.read(MAX_FILE_SIZE + 1)
+    filename = (file.filename or "record.pdf").replace("\\", "/").split("/")[-1]
+    filename = "".join(c for c in filename if c.isprintable() and c not in {'"', ';'})[:200]
     content_type = file.content_type or "application/octet-stream"
 
     # Validation
@@ -108,9 +124,14 @@ async def upload_document(
 
     # Compute SHA-256
     file_sha256 = hashlib.sha256(content).hexdigest()
+    existing = (await db.execute(select(Document).where(Document.encounter_id == encounter.id, Document.sha256 == file_sha256))).scalars().first()
+    if existing and encounter.active_snapshot_id:
+        return {"id": existing.id, "filename": existing.filename, "sha256": existing.sha256,
+                "mime_type": existing.mime_type, "file_size_bytes": existing.file_size_bytes,
+                "pipeline_result": {"status": "success", "duplicate": True}}
 
     # Generate random object key outside web root
-    object_key = f"{org_id}/{encounter_id}/{uuid.uuid4().hex}_{filename}"
+    object_key = f"{org_id}/{encounter_id}/{uuid.uuid4().hex}{Path(filename).suffix.lower()}"
 
     # Store file
     storage = get_storage()
@@ -144,14 +165,40 @@ async def upload_document(
         },
     )
     db.add(audit)
+    if encounter.status in {"approved", "exported"}:
+        db.add(OutboxEvent(event_type="approval.invalidated", owner_id=current_user.id,
+                          case_id=encounter.id, snapshot_id=encounter.active_snapshot_id,
+                          producer="application-api", payload_json={"reason": "source_changed"}))
+    encounter.status = "ingesting"
+    upload_event = OutboxEvent(event_type="document.uploaded", owner_id=current_user.id,
+                      case_id=encounter.id, producer="application-api", payload_json={"document_id": document.id})
+    db.add(upload_event)
     await db.commit()
 
+    if settings.QUEUE_BACKEND == "outbox":
+        return {"id": document.id, "filename": filename, "sha256": file_sha256,
+                "mime_type": content_type, "file_size_bytes": len(content),
+                "pipeline_result": {"status": "queued"}}
+
     # Execute processing pipeline (OCR -> Extraction -> Coding -> Rules)
-    pipeline_result = await run_encounter_pipeline(
-        encounter_id=encounter.id,
-        document_id=document.id,
-        db=db,
-    )
+    document_id = document.id
+    upload_event_id = upload_event.id
+    try:
+        pipeline_result = await run_encounter_pipeline(encounter_id=encounter_id, document_id=document_id, db=db)
+        upload_event.status = "published"
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        encounter = await db.get(Encounter, encounter_id)
+        encounter.status = "review_required"
+        encounter.active_snapshot_id = None
+        failed_event = await db.get(OutboxEvent, upload_event_id)
+        failed_event.status = "failed"
+        db.add(AuditEvent(organization_id=org_id, actor_id=actor_id,
+                         event_type="processing_failed", entity_type="document", entity_id=document_id,
+                         metadata_json={"reason": "text_extraction_unavailable"}))
+        await db.commit()
+        raise HTTPException(422, "Document saved, but text processing failed. Use a searchable PDF or UTF-8 text; image/scanned OCR requires an OCR adapter.")
 
     return {
         "id": document.id,

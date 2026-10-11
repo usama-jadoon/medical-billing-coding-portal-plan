@@ -11,6 +11,7 @@ export type CodingDomain =
   | 'dental';
 
 export type EncounterStatus =
+  | 'created' | 'ingesting' | 'ocr_ready' | 'facts_ready' | 'candidates_ready' | 'validated' | 'review_required' | 'exported'
   | 'draft'
   | 'processing'
   | 'review'
@@ -46,16 +47,39 @@ export interface DocumentItem {
   file_size_bytes: number;
   page_count: number;
   created_at: string;
+  sha256?: string;
   pages?: DocumentPage[];
 }
 
+export interface BoundingBoxCoordinates {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface EvidenceItem {
+  document_id?: string;
   id?: string;
   page_number: number;
   start_offset: number;
   end_offset: number;
   quoted_text: string;
   evidence_type: string;
+  region_id?: string;
+  bbox?: BoundingBoxCoordinates | null;
+  quote_hash?: string;
+  evidence_role?: string;
+}
+
+export interface ValidationFindingItem {
+  id: string;
+  stage: string;
+  severity: 'BLOCK' | 'WARN' | 'INFO' | 'REVIEW';
+  rule_id: string;
+  message: string;
+  source_reference: string;
+  candidate_id?: string | null;
 }
 
 export interface ClinicalFactItem {
@@ -93,6 +117,8 @@ export interface ReviewItem {
 }
 
 export interface EncounterDetail {
+  version: number;
+  snapshot_id?: string | null;
   id: string;
   organization_id: string;
   patient_id: string;
@@ -105,6 +131,7 @@ export interface EncounterDetail {
   documents: DocumentItem[];
   clinical_facts: ClinicalFactItem[];
   candidate_codes: CodeCandidateItem[];
+  validation_findings?: ValidationFindingItem[];
   reviews: ReviewItem[];
 }
 

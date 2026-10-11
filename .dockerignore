@@ -1,0 +1,13 @@
+.git
+.env
+.venv
+**/node_modules
+**/.next
+**/__pycache__
+.pytest_cache
+local_storage
+test_storage_dir
+*.db
+*.backup
+output
+tmp

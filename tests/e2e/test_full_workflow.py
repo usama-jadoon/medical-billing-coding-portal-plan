@@ -56,13 +56,13 @@ async def test_end_to_end_medical_coding_workflow(client: AsyncClient, seed_data
 
     # Step 4: Fetch Encounter Details (Facts, Evidence, Candidates, Rules)
     detail_resp = await client.get(
-        f"/api/encounters/{encounter_id}",
+        f"/api/cases/{encounter_id}/review",
         headers=coder_headers,
     )
     assert detail_resp.status_code == 200
     encounter_detail = detail_resp.json()
 
-    assert encounter_detail["status"] == "review"
+    assert encounter_detail["status"] == "review_required"
     assert len(encounter_detail["documents"]) == 1
     assert len(encounter_detail["clinical_facts"]) > 0
 
@@ -92,13 +92,14 @@ async def test_end_to_end_medical_coding_workflow(client: AsyncClient, seed_data
     reviewer_token = rev_login_resp.json()["access_token"]
     reviewer_headers = {"Authorization": f"Bearer {reviewer_token}"}
 
-    cand_ids = [c["id"] for c in candidates]
+    cand_ids = [c["id"] for c in candidates if c['code'] in {'K35.80', '99285'}]
     review_resp = await client.post(
         f"/api/reviews/encounter/{encounter_id}",
         json={
             "decision": "accept",
             "notes": "Reviewed by certified coder. Clinical facts and surgical pathology support K35.80 and ED E/M.",
             "approved_candidate_ids": cand_ids,
+            "version": encounter_detail["version"],
         },
         headers=reviewer_headers,
     )
@@ -114,7 +115,7 @@ async def test_end_to_end_medical_coding_workflow(client: AsyncClient, seed_data
     assert "encounter_created" in event_types
     assert "document_uploaded" in event_types
     assert "pipeline_processed" in event_types
-    assert "review_accept" in event_types
+    assert "case_decision_accept" in event_types
 
     # Step 7: Export Approved Coding Results
     # JSON Export

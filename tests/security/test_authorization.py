@@ -33,6 +33,7 @@ async def test_coder_cannot_approve_review(client: AsyncClient, seed_data):
     payload = {
         "decision": "accept",
         "notes": "Coder attempting to self-approve",
+        "version": 1,
     }
     response = await client.post(f"/api/reviews/encounter/{enc1_id}", json=payload, headers=headers)
     assert response.status_code == 403
@@ -48,11 +49,12 @@ async def test_reviewer_can_submit_review(client: AsyncClient, seed_data):
     enc1_id = seed_data["encounter1"].id
 
     payload = {
-        "decision": "accept",
-        "notes": "Approved following clinical record verification",
+        "decision": "mark_uncertain",
+        "notes": "Awaiting clinical record verification",
+        "version": 1,
     }
     response = await client.post(f"/api/reviews/encounter/{enc1_id}", json=payload, headers=headers)
     assert response.status_code == 201
     data = response.json()
-    assert data["decision"] == "accept"
-    assert data["encounter_status"] == "approved"
+    assert data["decision"] == "mark_uncertain"
+    assert data["encounter_status"] == "review_required"

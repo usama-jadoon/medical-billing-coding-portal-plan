@@ -9,21 +9,13 @@ import { api } from '@/lib/api';
 const CODING_DOMAINS = [
   { id: 'emergency_department', name: 'Emergency Department', defaultPos: '23', desc: 'Emergency E/M, trauma, acute urgent care' },
   { id: 'professional_office', name: 'Professional / Office', defaultPos: '11', desc: 'Outpatient clinic, established/new patient E/M' },
-  { id: 'outpatient', name: 'Hospital Outpatient', defaultPos: '22', desc: 'Ambulatory surgery, observation services' },
-  { id: 'inpatient', name: 'Inpatient Hospital', defaultPos: '21', desc: 'Initial & subsequent hospital care' },
-  { id: 'surgery', name: 'Surgery', defaultPos: '24', desc: 'Major & minor surgical procedures' },
-  { id: 'anesthesia', name: 'Anesthesia', defaultPos: '21', desc: 'General, regional, MAC procedures' },
-  { id: 'radiology', name: 'Radiology', defaultPos: '22', desc: 'Diagnostic imaging, CT, MRI, X-ray' },
-  { id: 'pathology_laboratory', name: 'Pathology & Laboratory', defaultPos: '81', desc: 'Clinical pathology and laboratory assays' },
-  { id: 'behavioral_health', name: 'Behavioral Health', defaultPos: '11', desc: 'Psychiatric diagnostic evaluations, psychotherapy' },
-  { id: 'dental', name: 'Dental (CDT)', defaultPos: '11', desc: 'ADA-licensed dental diagnostic & preventative' },
 ];
 
 export default function NewEncounterPage() {
   const router = useRouter();
   const [domain, setDomain] = useState('emergency_department');
-  const [patientRef, setPatientRef] = useState('SYNTH-PAT-90412');
-  const [serviceDate, setServiceDate] = useState('2026-09-22');
+  const [patientRef, setPatientRef] = useState('');
+  const [serviceDate, setServiceDate] = useState('');
   const [pos, setPos] = useState('23');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -184,7 +176,7 @@ export default function NewEncounterPage() {
         <div className="flex items-center justify-between pt-2">
           <div className="flex items-center space-x-1.5 text-xs text-slate-500">
             <ShieldAlert className="h-4 w-4 text-emerald-600" />
-            <span>Strict HIPAA isolation enforced on server.</span>
+            <span>Development workspace · Use synthetic records.</span>
           </div>
 
           <button

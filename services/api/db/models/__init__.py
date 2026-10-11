@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
 from sqlalchemy import (
-    String, DateTime, ForeignKey, Integer, Boolean, JSON, Text, Table, Column, Index
+    String, DateTime, ForeignKey, Integer, Boolean, JSON, Text, Table, Column, Index, Float
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from services.api.db.base import Base
@@ -68,6 +68,9 @@ class Encounter(Base):
     coding_domain: Mapped[str] = mapped_column(String(100), nullable=False)  # professional_office, emergency_department, etc.
     place_of_service: Mapped[str] = mapped_column(String(50), default="23", nullable=False)  # 11=Office, 23=ED, etc.
     status: Mapped[str] = mapped_column(String(50), default="draft", nullable=False, index=True)  # draft, processing, review, approved, rejected
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    active_snapshot_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    __mapper_args__ = {"version_id_col": version}
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
 
     organization: Mapped["Organization"] = relationship("Organization", back_populates="encounters")
@@ -121,6 +124,13 @@ class Evidence(Base):
     end_offset: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     quoted_text: Mapped[str] = mapped_column(Text, nullable=False)
     evidence_type: Mapped[str] = mapped_column(String(100), default="clinical_snippet", nullable=False)
+    region_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
+    bbox_x: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    bbox_y: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    bbox_w: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    bbox_h: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    quote_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    evidence_role: Mapped[str] = mapped_column(String(50), default="SUPPORT", nullable=False)
 
     document: Mapped["Document"] = relationship("Document", back_populates="evidence_items")
     clinical_facts: Mapped[List["ClinicalFact"]] = relationship("ClinicalFact", back_populates="evidence")
@@ -141,6 +151,7 @@ class ClinicalFact(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
     encounter_id: Mapped[str] = mapped_column(String(36), ForeignKey("encounters.id", ondelete="CASCADE"), nullable=False, index=True)
     fact_type: Mapped[str] = mapped_column(String(100), nullable=False, index=True)  # diagnosis, procedure, symptom, service_date, mdm, etc.
+    snapshot_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
     value_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     evidence_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("evidence.id", ondelete="SET NULL"), nullable=True)
     extraction_model: Mapped[str] = mapped_column(String(100), default="deterministic", nullable=False)
@@ -156,6 +167,7 @@ class CodeCandidate(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
     encounter_id: Mapped[str] = mapped_column(String(36), ForeignKey("encounters.id", ondelete="CASCADE"), nullable=False, index=True)
     code_system: Mapped[str] = mapped_column(String(50), nullable=False)  # ICD-10-CM, CPT, HCPCS, CDT
+    snapshot_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
     code: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     code_version: Mapped[str] = mapped_column(String(50), default="FY2026", nullable=False)
     status: Mapped[str] = mapped_column(String(50), default="candidate", nullable=False, index=True)  # candidate, approved, rejected, modified
@@ -208,3 +220,55 @@ class AuditEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
 
     organization: Mapped["Organization"] = relationship("Organization", back_populates="audit_events")
+
+
+class CaseSnapshot(Base):
+    __tablename__ = "case_snapshots"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    case_id: Mapped[str] = mapped_column(String(36), ForeignKey("encounters.id", ondelete="CASCADE"), nullable=False, index=True)
+    source_document_version_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    service_date: Mapped[str] = mapped_column(String(10), nullable=False)
+    domain_profile: Mapped[str] = mapped_column(String(100), nullable=False)
+    code_system_release: Mapped[str] = mapped_column(String(50), default="FY2026", nullable=False)
+    ruleset_version: Mapped[str] = mapped_column(String(50), default="2026.1", nullable=False)
+    snapshot_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    provenance_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
+
+
+class OutboxEvent(Base):
+    __tablename__ = "outbox_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    event_id: Mapped[str] = mapped_column(String(36), default=generate_uuid, nullable=False, index=True)
+    event_type: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
+    owner_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    case_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    snapshot_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    correlation_id: Mapped[str] = mapped_column(String(36), default=generate_uuid, nullable=False)
+    causation_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    producer: Mapped[str] = mapped_column(String(100), nullable=False)
+    schema_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    payload_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    status: Mapped[str] = mapped_column(String(50), default="pending", nullable=False, index=True)  # pending, published, failed
+
+
+class ValidationFinding(Base):
+    __tablename__ = "validation_findings"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    case_id: Mapped[str] = mapped_column(String(36), ForeignKey("encounters.id", ondelete="CASCADE"), nullable=False, index=True)
+    candidate_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("code_candidates.id", ondelete="CASCADE"), nullable=True, index=True)
+    stage: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # 1_catalog, 2_effective_date, 3_evidence, 4_documentation, 5_relationships, 6_modifiers, 7_ncci, 8_approval_gate
+    snapshot_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
+    severity: Mapped[str] = mapped_column(String(50), nullable=False)  # BLOCK, WARN, INFO
+    rule_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    source_reference: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
+
+
+# Alias Case to Encounter for single-user case terminology
+Case = Encounter

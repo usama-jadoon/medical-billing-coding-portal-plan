@@ -27,14 +27,8 @@ class LocalOCRProvider(OCRProvider):
                         )
                     )
             except Exception as e:
-                # If PDF reading fails, provide empty first page with fallback error note
-                pages.append(
-                    OCRPage(
-                        page_number=1,
-                        text="",
-                    )
-                )
-        else:
+                raise ValueError("PDF text extraction failed.") from e
+        elif filename.lower().endswith(".txt"):
             # For plain text / synthetic mock documents
             try:
                 decoded = document_bytes.decode("utf-8", errors="replace")
@@ -46,6 +40,8 @@ class LocalOCRProvider(OCRProvider):
                     text=decoded.strip(),
                 )
             )
+        else:
+            raise ValueError("Image OCR is unavailable in the local text adapter. Configure an image OCR provider.")
 
         if not pages:
             pages.append(OCRPage(page_number=1, text=""))

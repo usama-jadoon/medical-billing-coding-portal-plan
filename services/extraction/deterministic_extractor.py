@@ -26,7 +26,7 @@ class DeterministicFactExtractor(FactExtractionProvider):
         # Place of Service
         {
             "fact_type": "place_of_service",
-            "regex": r"(Emergency Department|Emergency Room|ED|Office Visit|Outpatient Clinic|Inpatient Hospital|Urgent Care)",
+            "regex": r"\b(Emergency Department|Emergency Room|ED|Office Visit|Outpatient Clinic|Inpatient Hospital|Urgent Care)\b",
             "extractor": lambda m: {"pos_description": m.group(1).strip()},
         },
         # Chief Complaint
@@ -55,7 +55,7 @@ class DeterministicFactExtractor(FactExtractionProvider):
         # Procedures & Interventions
         {
             "fact_type": "procedure",
-            "regex": r"(?:Procedure|Plan|Intervention):\s*([^\n\r]+)",
+            "regex": r"(?:Procedure|Intervention):\s*([^\n\r]+)",
             "extractor": lambda m: {"procedure_name": m.group(1).strip()},
         },
         {
@@ -88,8 +88,13 @@ class DeterministicFactExtractor(FactExtractionProvider):
         },
         # Provider Signature
         {
+            "fact_type": "patient_status",
+            "regex": r"\b(established patient|new patient)\b",
+            "extractor": lambda m: {"status": m.group(1).strip()},
+        },
+        {
             "fact_type": "provider_signature",
-            "regex": r"(?:Electronically Signed By|Signed by|Attending Physician):\s*([^\n\r]+)",
+            "regex": r"(?:Electronically Signed By|Signed by):\s*([^\n\r]+)",
             "extractor": lambda m: {"provider": m.group(1).strip()},
         },
     ]
@@ -111,6 +116,14 @@ class DeterministicFactExtractor(FactExtractionProvider):
             for p_def in self.PATTERNS:
                 pattern = re.compile(p_def["regex"], re.IGNORECASE)
                 for match in pattern.finditer(text):
+                    line_start = text.rfind('\n', 0, match.start()) + 1
+                    line_end = text.find('\n', match.end())
+                    context = text[line_start:line_end if line_end >= 0 else len(text)].lower()
+                    if p_def['fact_type'] in {'diagnosis', 'procedure'} and re.search(
+                        r'\b(no|not|denies|denied|without|ruled out|rule out|possible|suspected|history of|planned|scheduled|consider)\b', context
+                    ):
+                        warnings.append("Negated, historical, or uncertain clinical statement requires manual review.")
+                        continue
                     val = p_def["extractor"](match)
                     start, end = match.span()
                     quoted = text[start:end]

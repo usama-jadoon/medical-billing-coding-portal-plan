@@ -78,7 +78,6 @@ class MockProcedureCodeProvider(ProcedureCodeProvider):
             if (
                 item["code"].lower() in q_lower
                 or any(kw in q_lower for kw in item["keywords"])
-                or any(q_kw in item["description"].lower() for q_kw in q_lower.split())
             ):
                 results.append(
                     CodeCandidateDto(

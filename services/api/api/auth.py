@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
+from services.api.config import settings
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from services.api.db.session import get_db
 from services.api.db.models import User, Organization, AuditEvent
-from services.api.security.auth import hash_password, verify_password, create_access_token
+from services.api.security.auth import hash_password, verify_password, create_access_token, verify_totp
 from services.api.security.tenant import get_current_user
 from services.api.utils.logging import audit_logger
 
@@ -14,12 +15,13 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+    otp_code: str = ""
 
 
 class RegisterRequest(BaseModel):
     organization_name: str
     email: EmailStr
-    password: str
+    password: str = Field(min_length=12, max_length=72)
 
 
 class AuthResponse(BaseModel):
@@ -52,8 +54,13 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
             detail="Account is inactive.",
         )
 
+    if settings.OWNER_EMAIL and user.email.lower() != settings.OWNER_EMAIL.lower():
+        raise HTTPException(403, "This private workspace is restricted to its named owner.")
+    if settings.OWNER_TOTP_SECRET and not verify_totp(settings.OWNER_TOTP_SECRET, req.otp_code):
+        raise HTTPException(401, "A valid authenticator code is required.")
+
     token = create_access_token(
-        data={"sub": user.id, "org": user.organization_id, "role": user.role}
+        data={"sub": user.id, "org": user.organization_id, "role": user.role, "mfa": bool(settings.OWNER_TOTP_SECRET)}
     )
 
     # Record login audit
@@ -89,6 +96,12 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
 
 @router.post("/register", response_model=AuthResponse)
 async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
+    if settings.OWNER_TOTP_SECRET:
+        raise HTTPException(403, "Create the MFA-protected owner account using the local setup script.")
+    if settings.OWNER_EMAIL and req.email.lower() != settings.OWNER_EMAIL.lower():
+        raise HTTPException(403, "Only the configured workspace owner may register.")
+    if (await db.execute(select(User.id).where(User.role == "Owner"))).first():
+        raise HTTPException(403, "Owner already configured. Sign in to the private workspace.")
     # Check if email exists
     stmt = select(User).where(User.email == req.email)
     res = await db.execute(stmt)

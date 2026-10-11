@@ -43,7 +43,7 @@ export default function DocumentUploadPage() {
     const syntheticText = `METROPOLITAN HEALTH EMERGENCY DEPARTMENT
 EMERGENCY ENCOUNTER RECORD (SYNTHETIC RECORD - NO REAL PHI)
 
-Date of Service: 2026-09-22
+Date of Service: ${encounter?.service_date || '2026-09-22'}
 Place of Service: Emergency Department (POS 23)
 Attending Physician: Dr. Jane Doe, MD
 Patient Pseudonymous ID: ${encounter?.patient_reference || 'SYNTH-90210'}
@@ -82,9 +82,7 @@ Electronically Signed By: Dr. Jane Doe, MD (2026-09-22 14:30)`;
     setPipelineStep('Validating file signature & hashing (SHA-256)...');
 
     try {
-      setTimeout(() => setPipelineStep('Executing OCR & text layout extraction...'), 600);
-      setTimeout(() => setPipelineStep('Extracting structured clinical facts & evidence...'), 1200);
-      setTimeout(() => setPipelineStep('Generating candidate codes & running rule engine...'), 1800);
+      setPipelineStep('Uploading record and preparing evidence...');
 
       await api.uploadDocument(encounterId, file);
 
@@ -155,10 +153,10 @@ Electronically Signed By: Dr. Jane Doe, MD (2026-09-22 14:30)`;
             <UploadCloud className="h-7 w-7" />
           </div>
           <div className="mt-3 text-sm font-bold text-slate-800">
-            Click to select or drag and drop clinical document
+            Click to select a clinical document
           </div>
           <p className="mt-1 text-xs text-slate-500">
-            Supported formats: PDF, PNG, JPG, TIFF, TXT (Maximum size 25MB)
+            Searchable PDF or UTF-8 text · Maximum 25MB. Scans and images require an OCR adapter.
           </p>
           <input
             id="file-upload"
@@ -214,7 +212,7 @@ Electronically Signed By: Dr. Jane Doe, MD (2026-09-22 14:30)`;
         <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
           <div className="flex items-center space-x-1.5 text-[11px] text-slate-500 text-left">
             <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" />
-            <span>Encrypted at rest &bull; Outside web root &bull; Prompt injection shielded</span>
+            <span>Immutable source &bull; Verified source hashes &bull; Human review required</span>
           </div>
 
           <button

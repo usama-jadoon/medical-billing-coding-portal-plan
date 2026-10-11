@@ -49,6 +49,7 @@ async def test_user_cannot_modify_other_organization_review(client: AsyncClient,
     payload = {
         "decision": "accept",
         "notes": "Attempting cross-tenant approval",
+        "version": 1,
     }
     response = await client.post(f"/api/reviews/encounter/{enc2_id}", json=payload, headers=headers)
 

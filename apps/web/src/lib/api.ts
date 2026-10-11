@@ -63,6 +63,10 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     } catch {
       // fallback
     }
+    if (res.status === 401 && !endpoint.startsWith('/api/auth/')) {
+      clearAuthSession();
+      window.dispatchEvent(new Event('auth-expired'));
+    }
     throw new Error(errorDetail);
   }
 
@@ -70,10 +74,10 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 }
 
 export const api = {
-  async login(email: string, password: string): Promise<{ access_token: string; user: User }> {
+  async login(email: string, password: string, otp_code = ''): Promise<{ access_token: string; user: User }> {
     return request('/api/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, otp_code }),
     });
   },
 
@@ -88,12 +92,19 @@ export const api = {
     return request('/api/auth/me');
   },
 
+  async getCapabilities(): Promise<{
+    mode: string; storage: string; ocr: string; queue: string; catalog: string; ruleset: string;
+    owner_restricted: boolean; mfa_configured: boolean; session_minutes: number; step_up_seconds: number;
+  }> {
+    return request('/api/system/capabilities');
+  },
+
   async listEncounters(domain?: string, status?: string): Promise<EncounterSummary[]> {
     const params = new URLSearchParams();
     if (domain) params.append('domain', domain);
     if (status) params.append('status', status);
     const query = params.toString() ? `?${params.toString()}` : '';
-    return request(`/api/encounters${query}`);
+    return request(`/api/cases${query}`);
   },
 
   async createEncounter(data: {
@@ -102,32 +113,33 @@ export const api = {
     coding_domain: string;
     place_of_service: string;
   }): Promise<EncounterSummary> {
-    return request('/api/encounters', {
+    return request('/api/cases', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   },
 
   async getEncounter(id: string): Promise<EncounterDetail> {
-    return request(`/api/encounters/${id}`);
+    return request(`/api/cases/${id}/review`);
   },
 
   async uploadDocument(encounterId: string, file: File): Promise<unknown> {
     const formData = new FormData();
     formData.append('file', file);
-    return request(`/api/documents/encounter/${encounterId}/upload`, {
+    return request(`/api/cases/${encounterId}/documents`, {
       method: 'POST',
       body: formData,
     });
   },
 
-  async submitReview(encounterId: string, decision: string, notes: string, approvedCandidateIds: string[] = []): Promise<unknown> {
-    return request(`/api/reviews/encounter/${encounterId}`, {
+  async submitReview(encounterId: string, decision: string, notes: string, approvedCandidateIds: string[], version: number): Promise<unknown> {
+    return request(`/api/cases/${encounterId}/decisions`, {
       method: 'POST',
       body: JSON.stringify({
         decision,
         notes,
         approved_candidate_ids: approvedCandidateIds,
+        version,
       }),
     });
   },
@@ -143,5 +155,31 @@ export const api = {
 
   getExportUrl(encounterId: string, format: 'json' | 'csv' | 'worksheet'): string {
     return `${API_BASE}/api/exports/encounter/${encounterId}/${format}`;
+  },
+
+  async downloadExport(encounterId: string, format: 'json' | 'csv' | 'worksheet') {
+    const response = await fetch(this.getExportUrl(encounterId, format), {
+      headers: { Authorization: `Bearer ${getAuthToken()}` },
+    });
+    if (!response.ok) {
+      const body = await response.json();
+      throw new Error(body.error?.message || 'Export failed.');
+    }
+    const url = URL.createObjectURL(await response.blob());
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `coding-${encounterId}.${format === 'worksheet' ? 'html' : format}`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  },
+
+  async downloadManifest(encounterId: string) {
+    const manifest = await request(`/api/cases/${encounterId}/exports`, { method: 'POST' });
+    const url = URL.createObjectURL(new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `manifest-${encounterId}.json`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   },
 };

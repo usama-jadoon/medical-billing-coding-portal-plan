@@ -1,9 +1,7 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
 import './globals.css';
 import { Navbar } from '@/components/layout/navbar';
 
-const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
   title: 'Medical Billing & Coding Portal',
@@ -17,7 +15,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="h-full">
-      <body className={`${inter.className} min-h-screen bg-slate-50 text-slate-900 flex flex-col`}>
+      <body className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans">
         <Navbar />
         <main className="flex-1">
           {children}

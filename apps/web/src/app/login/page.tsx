@@ -9,8 +9,9 @@ export default function LoginPage() {
   const router = useRouter();
   const [isRegister, setIsRegister] = useState(false);
   const [orgName, setOrgName] = useState('Apex Health Systems');
-  const [email, setEmail] = useState('coder@apexhealth.org');
-  const [password, setPassword] = useState('CoderPassword123!');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [otpCode, setOtpCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -24,7 +25,7 @@ export default function LoginPage() {
       if (isRegister) {
         res = await api.register(orgName, email, password);
       } else {
-        res = await api.login(email, password);
+        res = await api.login(email, password, otpCode);
       }
       setAuthSession(res.access_token, res.user);
       router.push('/dashboard');
@@ -80,7 +81,7 @@ export default function LoginPage() {
                   : 'border-transparent text-slate-500 hover:text-slate-800'
               }`}
             >
-              Register Organization
+              Set up owner
             </button>
           </div>
 
@@ -92,10 +93,13 @@ export default function LoginPage() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {!isRegister && <label className="block text-xs font-semibold text-slate-700">Authenticator code (if configured)
+              <input aria-label="Authenticator code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={otpCode} onChange={e => setOtpCode(e.target.value)} className="block mt-1 w-full rounded-lg border border-slate-300 py-2 px-3" />
+            </label>}
             {isRegister && (
               <div>
                 <label className="block text-xs font-semibold text-slate-700">
-                  Organization Name
+                  Workspace Name
                 </label>
                 <div className="relative mt-1">
                   <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">

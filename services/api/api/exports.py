@@ -1,5 +1,7 @@
 import io
 import csv
+from html import escape
+from services.api.workflow.approval import validate_export
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse, Response
@@ -9,9 +11,15 @@ from sqlalchemy.orm import selectinload
 from services.api.db.session import get_db
 from services.api.db.models import Encounter, CodeCandidate, Review, AuditEvent
 from services.api.security.tenant import get_current_tenant
+from services.api.security.tenant import get_fresh_user
 from services.api.utils.logging import audit_logger
 
-router = APIRouter(prefix="/exports", tags=["exports"])
+def safe_csv(value):
+    text = str(value)
+    return "'" + text if text.lstrip().startswith(("=", "+", "-", "@")) else text
+
+
+router = APIRouter(prefix="/exports", tags=["exports"], dependencies=[Depends(get_fresh_user)])
 
 
 async def _get_encounter_for_export(encounter_id: str, tenant_id: str, db: AsyncSession) -> Encounter:
@@ -32,6 +40,7 @@ async def _get_encounter_for_export(encounter_id: str, tenant_id: str, db: Async
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Encounter not found for your organization.",
         )
+    await validate_export(db, encounter)
     return encounter
 
 
@@ -76,7 +85,7 @@ async def export_json(
                     for r in c.rule_results
                 ],
             }
-            for c in encounter.code_candidates
+            for c in encounter.code_candidates if c.status == "approved" and c.snapshot_id == encounter.active_snapshot_id
         ],
         "reviews": [
             {
@@ -126,7 +135,9 @@ async def export_csv(
     ])
 
     for c in encounter.code_candidates:
-        writer.writerow([
+        if c.status != "approved" or c.snapshot_id != encounter.active_snapshot_id:
+            continue
+        writer.writerow([safe_csv(value) for value in [
             encounter.id,
             encounter.patient.external_reference if encounter.patient else "",
             encounter.service_date,
@@ -139,7 +150,7 @@ async def export_csv(
             c.status,
             c.rationale,
             len(c.supporting_evidence),
-        ])
+        ]])
 
     csv_bytes = output.getvalue().encode("utf-8")
     return Response(
@@ -191,7 +202,7 @@ async def export_worksheet_html(
     <div class="meta-grid">
         <div class="meta-item">
             <div class="meta-label">Patient Pseudonymous ID</div>
-            <div class="meta-value">{encounter.patient.external_reference if encounter.patient else 'N/A'}</div>
+            <div class="meta-value">{escape(encounter.patient.external_reference) if encounter.patient else 'N/A'}</div>
         </div>
         <div class="meta-item">
             <div class="meta-label">Date of Service</div>
@@ -231,14 +242,16 @@ async def export_worksheet_html(
 """
 
     for c in encounter.code_candidates:
-        evidence_text = "<br>".join([f"&bull; <i>{ev.quoted_text}</i> (p. {ev.page_number})" for ev in c.supporting_evidence])
+        if c.status != "approved" or c.snapshot_id != encounter.active_snapshot_id:
+            continue
+        evidence_text = "<br>".join([f"&bull; <i>{escape(ev.quoted_text)}</i> (p. {ev.page_number})" for ev in c.supporting_evidence])
         html += f"""
             <tr>
                 <td><strong>{c.code_system}</strong></td>
                 <td><span style="font-family: monospace; font-size: 14px; font-weight: bold;">{c.code}</span></td>
                 <td>{c.code_version}</td>
                 <td><span class="badge badge-pass">{c.status.upper()}</span></td>
-                <td>{c.rationale}</td>
+                <td>{escape(c.rationale)}</td>
                 <td>{evidence_text or 'Documented in record'}</td>
             </tr>
         """

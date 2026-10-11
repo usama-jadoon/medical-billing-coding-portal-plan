@@ -90,14 +90,6 @@ function EncountersContent() {
             <option value="">All Coding Domains</option>
             <option value="emergency_department">Emergency Department</option>
             <option value="professional_office">Professional / Office</option>
-            <option value="outpatient">Outpatient</option>
-            <option value="inpatient">Inpatient</option>
-            <option value="surgery">Surgery</option>
-            <option value="anesthesia">Anesthesia</option>
-            <option value="radiology">Radiology</option>
-            <option value="pathology_laboratory">Pathology / Lab</option>
-            <option value="behavioral_health">Behavioral Health</option>
-            <option value="dental">Dental (CDT)</option>
           </select>
         </div>
 
@@ -108,11 +100,11 @@ function EncountersContent() {
           className="rounded-lg border border-slate-300 py-2 px-3 text-xs focus:border-blue-600 focus:outline-hidden focus:ring-1 focus:ring-blue-600 bg-white"
         >
           <option value="">All Statuses</option>
-          <option value="draft">Draft</option>
-          <option value="processing">Processing (OCR/Extracting)</option>
-          <option value="review">Ready for Review</option>
+          <option value="created">Created</option>
+          <option value="ingesting">Processing</option>
+          <option value="review_required">Review required</option>
           <option value="approved">Approved</option>
-          <option value="rejected">Rejected</option>
+          <option value="exported">Exported</option>
         </select>
       </div>
 
@@ -164,7 +156,7 @@ function EncountersContent() {
                         className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
                           enc.status === 'approved'
                             ? 'bg-emerald-100 text-emerald-800'
-                            : enc.status === 'review'
+                            : ['review', 'review_required'].includes(enc.status)
                             ? 'bg-amber-100 text-amber-800'
                             : enc.status === 'rejected'
                             ? 'bg-red-100 text-red-800'
@@ -178,7 +170,7 @@ function EncountersContent() {
                       {enc.document_count} file{enc.document_count !== 1 ? 's' : ''}
                     </td>
                     <td className="px-6 py-4 text-right space-x-2">
-                      {enc.status === 'draft' ? (
+                      {['draft', 'created'].includes(enc.status) ? (
                         <Link
                           href={`/encounters/${enc.id}/upload`}
                           className="font-bold text-blue-600 hover:text-blue-800"

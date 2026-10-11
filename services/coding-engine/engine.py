@@ -54,6 +54,8 @@ class CodingEngine:
             if query:
                 matches = await self.dx_provider.search(query, service_date)
                 for m in matches:
+                    if fact_type != "diagnosis" and not m.code.startswith("R"):
+                        continue
                     raw_candidates.append(m)
                     if evidence:
                         fact_evidence_map.setdefault(m.code, []).append(evidence)
@@ -67,7 +69,7 @@ class CodingEngine:
                 (f for f in facts if f.get("fact_type") == "medical_decision_making"),
                 None
             )
-            mdm_level = mdm_fact.get("value", {}).get("mdm_level", "").lower() if mdm_fact else "moderate"
+            mdm_level = mdm_fact.get("value", {}).get("mdm_level", "").lower() if mdm_fact else ""
             for m in ed_matches:
                 if "level 4" in m.description.lower() and "moderate" in mdm_level:
                     raw_candidates.append(m)
@@ -80,8 +82,13 @@ class CodingEngine:
 
         elif domain == "professional_office":
             office_matches = await self.px_provider.search("office visit established patient", service_date)
+            mdm_fact = next((f for f in facts if f.get("fact_type") == "medical_decision_making"), None)
+            patient_fact = next((f for f in facts if f.get("fact_type") == "patient_status" and f.get("value", {}).get("status", "").lower() == "established patient"), None)
+            mdm_level = mdm_fact.get("value", {}).get("mdm_level", "").lower() if mdm_fact else ""
             for m in office_matches:
-                raw_candidates.append(m)
+                if patient_fact and mdm_fact and mdm_level and f"{mdm_level} mdm" in m.description.lower():
+                    raw_candidates.append(m)
+                    fact_evidence_map.setdefault(m.code, []).extend([mdm_fact["evidence"], patient_fact["evidence"]])
 
         elif domain == "dental":
             # Search isolated dental provider

@@ -7,9 +7,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from sqlalchemy.orm.exc import StaleDataError
+from fastapi.encoders import jsonable_encoder
 
 from services.api.config import settings
 from services.api.db.session import engine
+from sqlalchemy import text as sql_text
+from services.api.db.session import async_session_factory
+from services.api.security.tenant import get_current_user
+from fastapi import Depends
 from services.api.db.base import Base
 from services.api.db import models  # Ensures all models are registered
 from services.api.utils.logging import audit_logger
@@ -21,10 +27,13 @@ from services.api.api.reviews import router as reviews_router
 from services.api.api.references import router as references_router
 from services.api.api.audit import router as audit_router
 from services.api.api.exports import router as exports_router
+from services.api.api.cases import router as cases_router
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if settings.APP_ENV == "production":
+        raise RuntimeError("Production is disabled for the development catalogs and local controls. Configure and verify production policy, storage, identity, and vendor controls before enabling PHI.")
     # Initialize database tables
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -123,12 +132,17 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             "error": {
                 "code": "VALIDATION_ERROR",
                 "message": "Request validation failed.",
-                "details": exc.errors(),
+                "details": jsonable_encoder(exc.errors(), custom_encoder={ValueError: str}),
                 "request_id": request_id,
             }
         },
         headers={"X-Request-ID": request_id},
     )
+
+
+@app.exception_handler(StaleDataError)
+async def stale_write_handler(request: Request, exc: StaleDataError):
+    return JSONResponse(status_code=409, content={"error": {"code": "STALE_VERSION", "message": "Case changed. Reload before making a decision."}})
 
 
 # Health & Readiness Endpoints (MUST NOT EXPOSE SECRETS)
@@ -144,6 +158,11 @@ async def health_check():
 
 @app.get("/ready", tags=["system"])
 async def readiness_check():
+    try:
+        async with async_session_factory() as db:
+            await db.execute(sql_text("SELECT 1"))
+    except Exception:
+        return JSONResponse(status_code=503, content={"status": "unavailable", "database": "unavailable"})
     return {
         "status": "ready",
         "database": "connected",
@@ -151,6 +170,16 @@ async def readiness_check():
         "ocr": settings.OCR_PROVIDER,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+
+
+@app.get("/api/system/capabilities", dependencies=[Depends(get_current_user)])
+async def capabilities():
+    return {"mode": "synthetic-development", "supported_domains": ["emergency_department", "professional_office"],
+            "storage": settings.STORAGE_PROVIDER, "ocr": settings.OCR_PROVIDER,
+            "queue": settings.QUEUE_BACKEND, "catalog": "sample-catalog-1", "ruleset": "demo-1",
+            "owner_restricted": bool(settings.OWNER_EMAIL), "mfa_configured": bool(settings.OWNER_TOTP_SECRET),
+            "session_minutes": settings.ACCESS_TOKEN_EXPIRE_MINUTES, "step_up_seconds": settings.STEP_UP_MAX_AGE_SECONDS,
+            "production_enabled": False, "image_ocr_available": False}
 
 
 # Include Routers
@@ -161,3 +190,4 @@ app.include_router(reviews_router, prefix="/api")
 app.include_router(references_router, prefix="/api")
 app.include_router(audit_router, prefix="/api")
 app.include_router(exports_router, prefix="/api")
+app.include_router(cases_router, prefix="/api")

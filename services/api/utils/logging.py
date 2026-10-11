@@ -35,6 +35,8 @@ class StructuredAuditLogger:
                 sanitized[k] = "[REDACTED_PHI]"
             elif isinstance(v, dict):
                 sanitized[k] = self._sanitize(v)
+            elif isinstance(v, list):
+                sanitized[k] = [self._sanitize(item) if isinstance(item, dict) else item for item in v]
             else:
                 sanitized[k] = v
         return sanitized
