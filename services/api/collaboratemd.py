@@ -28,15 +28,14 @@ class _InMemoryExcelWriter(ExcelWriter):
 
 
 PROFESSIONAL_HEADERS = [
-    "Line #", "DOS (Date of Service)", "POS", "Primary DX (Box 21.A)",
-    "Secondary DXs (Box 21.B-L)", "CPT / HCPCS (Box 24.D)", "Mod 1", "Mod 2",
-    "DX Pointer (Box 24.E)", "Units (Box 24.G)", "Procedure Description",
-    "Clinical Evidence / Justification",
+    "Line #", "DOS", "POS", "Primary DX", "Secondary DXs",
+    "CPT/HCPCS", "Mod 1", "Mod 2", "DX Pointer", "Units",
+    "Charge", "Rationale",
 ]
 FACILITY_HEADERS = [
-    "Line #", "DOS", "Rev Code (Box 42)", "Revenue Description",
-    "HCPCS / CPT (Box 44)", "Modifier", "Units (Box 46)",
-    "Primary DX (Box 67)", "Pointer", "Documentation Note / Justification",
+    "Line #", "DOS", "Rev Code", "Rev Description",
+    "HCPCS/CPT", "Modifier", "Units",
+    "Primary DX", "Pointer", "Justification",
 ]
 
 
@@ -127,7 +126,10 @@ def create_collaboratemd_workbook(encounter_data: dict) -> BytesIO:
                 ("Claim fields use explicit billing review selections." if encounter_data.get('billing_review_id') else
                  "Blank claim fields need review; diagnosis order and pointers are not assigned."))
     lines = encounter_data.get("cms1500_lines", [])
-    _rows(ws, lines, ["dos", "pos", "primary_dx", "secondary_dx", "cpt", "mod1", "mod2", "pointer", "units", "description", "justification"])
+    # "Charge" has no key: charges are never invented, the reviewer fills them.
+    # "Rationale" carries the evidence/justification text.
+    _rows(ws, lines, ["dos", "pos", "primary_dx", "secondary_dx", "cpt", "mod1", "mod2",
+                      "pointer", "units", "charge", "justification"])
     table_end = 6 + len(lines)
     diagnosis_header = max(8, table_end + 3)
     _header(ws, diagnosis_header, ["Approved diagnosis", "Version", "Evidence (unsequenced)"], "1E3A8A")
