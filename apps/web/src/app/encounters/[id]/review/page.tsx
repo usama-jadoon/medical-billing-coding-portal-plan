@@ -26,6 +26,7 @@ import {
   CodeCandidateItem,
   ClinicalFactItem,
   EvidenceItem,
+  ClaimLines,
 } from '@/lib/types';
 
 export default function ReviewPage() {
@@ -43,6 +44,9 @@ export default function ReviewPage() {
   const [notes, setNotes] = useState('');
   const [actionError, setActionError] = useState<string | null>(null);
   const [activeDocumentId, setActiveDocumentId] = useState<string | null>(null);
+  const [claimTab, setClaimTab] = useState<'cms1500' | 'ub04'>('cms1500');
+  const [claimLines, setClaimLines] = useState<ClaimLines | null>(null);
+  const [claimLoading, setClaimLoading] = useState(false);
 
   useEffect(() => {
     let ignore = false;
@@ -171,7 +175,7 @@ export default function ReviewPage() {
   const hasSelectedBlocker = (encounter.validation_findings || []).some(f =>
     f.severity === 'BLOCK' && f.candidate_id && encounter.candidate_codes.some(c => c.id === f.candidate_id && c.status === 'approved')
   );
-  const handleExport = async (format: 'json' | 'csv' | 'worksheet' | 'manifest') => {
+  const handleExport = async (format: 'json' | 'csv' | 'worksheet' | 'manifest' | 'xlsx') => {
     setActionError(null);
     try {
       if (format === 'manifest') await api.downloadManifest(encounter.id);
@@ -179,6 +183,17 @@ export default function ReviewPage() {
       setEncounter(await api.getEncounter(encounter.id));
     } catch (err) { setActionError(err instanceof Error ? err.message : 'Export failed.'); }
   };
+
+  // Split-billing claim preview (professional CMS-1500 vs institutional UB-04)
+  useEffect(() => {
+    if (!encounter || !['approved', 'exported'].includes(encounter.status)) return;
+    let ignore = false;
+    setClaimLoading(true);
+    api.getClaimLines(encounter.id)
+      .then((data) => { if (!ignore) { setClaimLines(data); setClaimLoading(false); } })
+      .catch(() => { if (!ignore) setClaimLoading(false); });
+    return () => { ignore = true; };
+  }, [encounter?.id, encounter?.status]);
 
   // 8 Stages definition for visual audit summary
   const validationStages = [
@@ -256,6 +271,14 @@ export default function ReviewPage() {
                 <FileText className="h-3.5 w-3.5 text-blue-600" />
                 <span>Worksheet</span>
               </button>
+              <button
+                onClick={() => handleExport('xlsx')}
+                className="inline-flex items-center space-x-1 px-2.5 py-1.5 text-xs font-bold rounded-md bg-emerald-600 text-white hover:bg-emerald-700 shadow-xs"
+                title="Download CollaborateMD-ready claim workbook (CMS-1500 + UB-04)"
+              >
+                <Download className="h-3.5 w-3.5 text-white" />
+                <span>CollaborateMD Excel</span>
+              </button>
               <button onClick={() => handleExport('manifest')} className="px-2 py-1.5 text-xs font-semibold text-blue-700">Signed manifest</button>
             </div>
           )}
@@ -311,6 +334,128 @@ export default function ReviewPage() {
         <Link href={`/encounters/${encounter.id}/upload`} className="text-xs text-blue-700">Upload amended record</Link>
         {actionError && <p role="alert" className="w-full text-xs text-red-700">{actionError}</p>}
       </div>
+
+      {/* Claim Preview: CMS-1500 vs UB-04 split-billing tabs */}
+      {claimLines && (
+        <div className="bg-white border-b border-slate-200 px-4 py-3 shrink-0">
+          <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+            <div className="flex items-center space-x-1 bg-slate-100 rounded-lg p-1">
+              <button
+                type="button"
+                onClick={() => setClaimTab('cms1500')}
+                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors ${
+                  claimTab === 'cms1500'
+                    ? 'bg-white text-blue-700 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                CMS-1500 · Professional
+              </button>
+              <button
+                type="button"
+                onClick={() => setClaimTab('ub04')}
+                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors ${
+                  claimTab === 'ub04'
+                    ? 'bg-white text-blue-700 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                UB-04 · Institutional
+              </button>
+            </div>
+            <span className="text-[10px] text-slate-400">
+              Split-billing preview · modifiers marked * are suggested — confirm before claim entry
+            </span>
+          </div>
+
+          {claimTab === 'cms1500' ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 text-slate-600 text-left">
+                    <th className="border border-slate-200 px-2 py-1">Ln</th>
+                    <th className="border border-slate-200 px-2 py-1">DOS</th>
+                    <th className="border border-slate-200 px-2 py-1">CPT/HCPCS</th>
+                    <th className="border border-slate-200 px-2 py-1">Mod*</th>
+                    <th className="border border-slate-200 px-2 py-1">Dx Ptr</th>
+                    <th className="border border-slate-200 px-2 py-1">Units</th>
+                    <th className="border border-slate-200 px-2 py-1">Description</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {claimLines.professional.length === 0 && (
+                    <tr><td colSpan={7} className="border border-slate-200 px-2 py-2 text-slate-400 text-center">
+                      No approved CPT/HCPCS lines yet.
+                    </td></tr>
+                  )}
+                  {claimLines.professional.map((l) => (
+                    <tr key={l.line} className="hover:bg-slate-50">
+                      <td className="border border-slate-200 px-2 py-1">{l.line}</td>
+                      <td className="border border-slate-200 px-2 py-1">{l.dos}</td>
+                      <td className="border border-slate-200 px-2 py-1 font-mono font-bold">{l.code}</td>
+                      <td className="border border-slate-200 px-2 py-1">
+                        {l.modifiers.length > 0 ? (
+                          <span className="text-amber-700 font-semibold" title="Suggested — confirm before entry">
+                            -{l.modifiers.join(', -')}*
+                          </span>
+                        ) : <span className="text-slate-300">—</span>}
+                      </td>
+                      <td className="border border-slate-200 px-2 py-1">{l.dx_pointers}</td>
+                      <td className="border border-slate-200 px-2 py-1">{l.units}</td>
+                      <td className="border border-slate-200 px-2 py-1 text-slate-600">{l.description}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {claimLines.diagnoses.length > 0 && (
+                <div className="mt-1 text-[11px] text-slate-500">
+                  Box 21 diagnoses: {claimLines.diagnoses.map((d) => `${d.pointer}: ${d.code}`).join(' · ')}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 text-slate-600 text-left">
+                    <th className="border border-slate-200 px-2 py-1">Ln</th>
+                    <th className="border border-slate-200 px-2 py-1">Rev Code (Box 42)</th>
+                    <th className="border border-slate-200 px-2 py-1">Description</th>
+                    <th className="border border-slate-200 px-2 py-1">CPT/HCPCS</th>
+                    <th className="border border-slate-200 px-2 py-1">Units</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {claimLines.institutional.length === 0 && (
+                    <tr><td colSpan={5} className="border border-slate-200 px-2 py-2 text-slate-400 text-center">
+                      No institutional lines derived — facility revenue data not present.
+                    </td></tr>
+                  )}
+                  {claimLines.institutional.map((l) => (
+                    <tr key={l.line} className="hover:bg-slate-50">
+                      <td className="border border-slate-200 px-2 py-1">{l.line}</td>
+                      <td className="border border-slate-200 px-2 py-1 font-mono font-bold">{l.revenue_code}</td>
+                      <td className="border border-slate-200 px-2 py-1 text-slate-600">{l.revenue_description}</td>
+                      <td className="border border-slate-200 px-2 py-1 font-mono">{l.cpt}</td>
+                      <td className="border border-slate-200 px-2 py-1">{l.units}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {claimLines.diagnoses.length > 0 && (
+                <div className="mt-1 text-[11px] text-slate-500">
+                  Box 67 principal diagnosis: {claimLines.diagnoses[0].pointer}: {claimLines.diagnoses[0].code}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+      {claimLoading && (
+        <div className="bg-white border-b border-slate-200 px-4 py-2 text-[11px] text-slate-400 shrink-0">
+          Loading claim preview…
+        </div>
+      )}
 
       {/* Three Column Main Workspace */}
       <div className="grid grid-cols-12 md:flex-1 md:min-h-0 md:overflow-hidden divide-x divide-slate-200">

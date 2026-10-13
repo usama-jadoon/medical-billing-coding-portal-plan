@@ -13,6 +13,35 @@ from services.api.db.models import Encounter, CodeCandidate, Review, AuditEvent
 from services.api.security.tenant import get_current_tenant
 from services.api.security.tenant import get_fresh_user
 from services.api.utils.logging import audit_logger
+from services.rules_engine.rulesets.er_split_billing import build_split_claim
+
+XLSX_MEDIA_TYPE = (
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
+
+# Column template for the CMS-1500 service-lines sheet. Adjust headers/widths
+# here to match the exact CollaborateMD claim entry screen -- the renderer
+# reads only these tables, so no other code changes when you tweak them.
+CMS1500_LINE_COLUMNS = [
+    ("line", "Ln", 6),
+    ("dos", "DOS", 12),
+    ("code_system", "Type", 10),
+    ("code", "CPT/HCPCS", 13),
+    ("modifiers", "Mod*", 10),
+    ("dx_pointers", "Dx Ptr", 9),
+    ("units", "Units", 8),
+    ("charge", "Charge", 12),
+    ("description", "Description", 44),
+]
+
+UB04_LINE_COLUMNS = [
+    ("line", "Ln", 6),
+    ("revenue_code", "Rev Code (Box 42)", 16),
+    ("revenue_description", "Description (Box 43)", 34),
+    ("cpt", "CPT/HCPCS (Box 44)", 16),
+    ("units", "Units", 8),
+    ("description", "Detail", 40),
+]
 
 def safe_csv(value):
     text = str(value)
@@ -271,4 +300,197 @@ async def export_worksheet_html(
         content=html.encode("utf-8"),
         media_type="text/html",
         headers={"Content-Disposition": f'inline; filename="coding_worksheet_{encounter.id}.html"'},
+    )
+
+
+def _approved_candidates(encounter: Encounter) -> list:
+    return [
+        c for c in encounter.code_candidates
+        if c.status == "approved" and c.snapshot_id == encounter.active_snapshot_id
+    ]
+
+
+def _split_for_encounter(encounter: Encounter) -> dict:
+    approved = [
+        {"code": c.code, "code_system": c.code_system,
+         "description": c.rationale or "",
+         "kind": "diagnosis" if c.code_system == "ICD-10-CM" else "procedure"}
+        for c in _approved_candidates(encounter)
+    ]
+    return build_split_claim(approved, {
+        "service_date": str(encounter.service_date or ""),
+        "place_of_service": encounter.place_of_service or "",
+        "domain": encounter.coding_domain or "",
+    })
+
+
+def _render_claim_workbook(encounter: Encounter, split: dict) -> bytes:
+    """Dual-sheet CollaborateMD-ready workbook: CMS-1500 + UB-04 + audit."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+
+    wb = Workbook()
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill("solid", fgColor="2F5496")
+    title_font = Font(bold=True, size=13, color="1F3864")
+    wrap = Alignment(vertical="top", wrap_text=True)
+
+    def start_sheet(title: str):
+        ws = wb.active if wb.active.title == "Sheet" else wb.create_sheet()
+        ws.title = title
+        return ws
+
+    def write_header(ws, row: int, columns) -> None:
+        for idx, (_, label, _) in enumerate(columns, start=1):
+            cell = ws.cell(row=row, column=idx, value=label)
+            cell.font = header_font
+            cell.fill = header_fill
+        for idx, (_, _, width) in enumerate(columns, start=1):
+            ws.column_dimensions[ws.cell(row=row, column=idx).column_letter].width = width
+        ws.freeze_panes = ws.cell(row=row + 1, column=1).coordinate
+        ws.auto_filter.ref = ws.dimensions
+
+    # --- Sheet 1: CMS-1500 (professional) -------------------------------------
+    ws = start_sheet("CMS-1500")
+    ws["A1"] = "CMS-1500 Professional Claim Lines"
+    ws["A1"].font = title_font
+    ws["A2"] = (f"Patient ref: {encounter.patient.external_reference if encounter.patient else 'N/A'}"
+                f"   |   DOS: {encounter.service_date}"
+                f"   |   POS: {encounter.place_of_service}"
+                f"   |   Domain: {(encounter.coding_domain or '').replace('_', ' ')}")
+    ws["A4"] = "Box 21 — Diagnosis pointers"
+    ws["A4"].font = Font(bold=True)
+    dx_cols = [("pointer", "Ptr", 6), ("code", "ICD-10-CM", 14), ("description", "Description", 52)]
+    write_header(ws, 5, dx_cols)
+    r = 6
+    for d in split["diagnoses"]:
+        ws.cell(row=r, column=1, value=d["pointer"])
+        ws.cell(row=r, column=2, value=d["code"])
+        c3 = ws.cell(row=r, column=3, value=d["description"])
+        c3.alignment = wrap
+        r += 1
+    if not split["diagnoses"]:
+        ws.cell(row=r, column=1, value="(no approved ICD-10-CM diagnoses)")
+        r += 1
+
+    r += 1
+    ws.cell(row=r, column=1, value="Box 24 — Service lines").font = Font(bold=True)
+    r += 1
+    write_header(ws, r, CMS1500_LINE_COLUMNS)
+    r += 1
+    for line in split["professional"]:
+        vals = {
+            "line": line["line"], "dos": line["dos"],
+            "code_system": line["code_system"], "code": line["code"],
+            "modifiers": ",".join(line["modifiers"]),
+            "dx_pointers": line["dx_pointers"], "units": line["units"],
+            "charge": "", "description": line["description"],
+        }
+        for idx, (key, _, _) in enumerate(CMS1500_LINE_COLUMNS, start=1):
+            cell = ws.cell(row=r, column=idx, value=vals[key])
+            cell.alignment = wrap
+        r += 1
+    if not split["professional"]:
+        ws.cell(row=r, column=1,
+                value="(no approved CPT/HCPCS lines yet -- add procedure codes or load licensed CPT data)")
+        r += 1
+    r += 1
+    ws.cell(row=r, column=1,
+            value="* Mod = suggested modifier -- reviewer must confirm before claim entry.").font = Font(italic=True)
+
+    # --- Sheet 2: UB-04 (institutional) ----------------------------------------
+    ws2 = wb.create_sheet("UB-04")
+    ws2["A1"] = "UB-04 Institutional Claim Lines"
+    ws2["A1"].font = title_font
+    ws2["A2"] = (f"Patient ref: {encounter.patient.external_reference if encounter.patient else 'N/A'}"
+                 f"   |   DOS: {encounter.service_date}")
+    ws2["A4"] = "Box 42/43/44 — Revenue lines"
+    ws2["A4"].font = Font(bold=True)
+    write_header(ws2, 5, UB04_LINE_COLUMNS)
+    r = 6
+    for line in split["institutional"]:
+        vals = {"line": line["line"], "revenue_code": line["revenue_code"],
+                "revenue_description": line["revenue_description"],
+                "cpt": line["cpt"], "units": line["units"],
+                "description": line["description"]}
+        for idx, (key, _, _) in enumerate(UB04_LINE_COLUMNS, start=1):
+            cell = ws2.cell(row=r, column=idx, value=vals[key])
+            cell.alignment = wrap
+        r += 1
+    if not split["institutional"]:
+        ws2.cell(row=r, column=1,
+                 value="(no institutional lines derived -- facility revenue data not present)")
+        r += 1
+    r += 1
+    ws2.cell(row=r, column=1, value="Box 67 — Principal diagnosis").font = Font(bold=True)
+    r += 1
+    if split["diagnoses"]:
+        d0 = split["diagnoses"][0]
+        ws2.cell(row=r, column=1, value=f"{d0['pointer']}: {d0['code']} -- {d0['description']}")
+    else:
+        ws2.cell(row=r, column=1, value="(none)")
+
+    # --- Sheet 3: audit ---------------------------------------------------------
+    ws3 = wb.create_sheet("Audit")
+    for idx, label in enumerate(["Field", "Value"], start=1):
+        cell = ws3.cell(row=1, column=idx, value=label)
+        cell.font = header_font
+        cell.fill = header_fill
+    ws3.column_dimensions["A"].width = 26
+    ws3.column_dimensions["B"].width = 70
+    latest = encounter.reviews[-1] if encounter.reviews else None
+    rows = [
+        ("Encounter ID", encounter.id),
+        ("Status", encounter.status),
+        ("Reviewer", latest.reviewer.email if latest and latest.reviewer else "Pending"),
+        ("Ruleset", f"{split['ruleset']} v{split['ruleset_version']}"),
+        ("Exported at (UTC)", datetime.now(timezone.utc).isoformat()),
+        ("Professional lines", len(split["professional"])),
+        ("Institutional lines", len(split["institutional"])),
+    ]
+    for i, (k, v) in enumerate(rows, start=2):
+        ws3.cell(row=i, column=1, value=k).font = Font(bold=True)
+        ws3.cell(row=i, column=2, value=str(v))
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+@router.get("/encounter/{encounter_id}/claim-lines")
+async def claim_lines(
+    encounter_id: str,
+    db: AsyncSession = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+):
+    """Split-billing preview for the review UI: professional + institutional lines."""
+    encounter = await _get_encounter_for_export(encounter_id, tenant_id, db)
+    return _split_for_encounter(encounter)
+
+
+@router.get("/encounter/{encounter_id}/xlsx")
+async def export_xlsx(
+    encounter_id: str,
+    db: AsyncSession = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+):
+    encounter = await _get_encounter_for_export(encounter_id, tenant_id, db)
+
+    audit = AuditEvent(
+        organization_id=tenant_id,
+        actor_id="exporter",
+        event_type="encounter_exported_xlsx",
+        entity_type="encounter",
+        entity_id=encounter.id,
+        metadata_json={"export_format": "XLSX"},
+    )
+    db.add(audit)
+    await db.commit()
+
+    split = _split_for_encounter(encounter)
+    content = _render_claim_workbook(encounter, split)
+    return Response(
+        content=content,
+        media_type=XLSX_MEDIA_TYPE,
+        headers={"Content-Disposition": f'attachment; filename="collaboratemd_claim_{encounter.id}.xlsx"'},
     )

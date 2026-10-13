@@ -4,6 +4,11 @@ from services.rules_engine.rulesets.emergency import EDPlaceOfServiceRule, EDMed
 from services.rules_engine.rulesets.professional import OfficePlaceOfServiceRule
 from services.rules_engine.rulesets.ncci import NCCIMutuallyExclusiveRule
 from services.rules_engine.rulesets.modifiers import Modifier25RequirementRule
+from services.rules_engine.rulesets.er_split_billing import (
+    Modifier26ProfessionalComponentRule,
+    ERSplitBillingCompletenessRule,
+    RevenueCodeCptPairingRule,
+)
 
 
 class RuleEngine:
@@ -14,6 +19,9 @@ class RuleEngine:
             OfficePlaceOfServiceRule(),
             NCCIMutuallyExclusiveRule(),
             Modifier25RequirementRule(),
+            Modifier26ProfessionalComponentRule(),
+            ERSplitBillingCompletenessRule(),
+            RevenueCodeCptPairingRule(),
         ]
 
     def validate(

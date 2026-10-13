@@ -171,3 +171,39 @@ export interface AuditEventItem {
   metadata: Record<string, unknown>;
   created_at: string;
 }
+
+export interface ClaimDiagnosisItem {
+  pointer: string;
+  code: string;
+  description: string;
+}
+
+export interface ClaimProfessionalLine {
+  line: number;
+  dos: string;
+  pos: string;
+  code_system: string;
+  code: string;
+  description: string;
+  modifiers: string[];
+  modifiers_suggested: boolean;
+  dx_pointers: string;
+  units: number;
+}
+
+export interface ClaimInstitutionalLine {
+  line: number;
+  revenue_code: string;
+  revenue_description: string;
+  cpt: string;
+  description: string;
+  units: number;
+}
+
+export interface ClaimLines {
+  ruleset: string;
+  ruleset_version: string;
+  diagnoses: ClaimDiagnosisItem[];
+  professional: ClaimProfessionalLine[];
+  institutional: ClaimInstitutionalLine[];
+}

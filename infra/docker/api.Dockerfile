@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY pyproject.toml /app/
 RUN pip install --no-cache-dir \
-    fastapi uvicorn[standard] pydantic pydantic-settings sqlalchemy asyncpg aiosqlite alembic python-multipart pyjwt bcrypt pypdf httpx "pydantic[email]"
+    fastapi uvicorn[standard] pydantic pydantic-settings sqlalchemy asyncpg aiosqlite alembic python-multipart pyjwt bcrypt pypdf httpx openpyxl "pydantic[email]"
 
 COPY services/ /app/services/
 COPY alembic.ini /app/

@@ -4,6 +4,7 @@ import {
   EncounterDetail,
   ReferenceItem,
   AuditEventItem,
+  ClaimLines,
 } from './types';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -153,11 +154,11 @@ export const api = {
     return request(`/api/audit${query}`);
   },
 
-  getExportUrl(encounterId: string, format: 'json' | 'csv' | 'worksheet'): string {
+  getExportUrl(encounterId: string, format: 'json' | 'csv' | 'worksheet' | 'xlsx'): string {
     return `${API_BASE}/api/exports/encounter/${encounterId}/${format}`;
   },
 
-  async downloadExport(encounterId: string, format: 'json' | 'csv' | 'worksheet') {
+  async downloadExport(encounterId: string, format: 'json' | 'csv' | 'worksheet' | 'xlsx') {
     const response = await fetch(this.getExportUrl(encounterId, format), {
       headers: { Authorization: `Bearer ${getAuthToken()}` },
     });
@@ -168,9 +169,14 @@ export const api = {
     const url = URL.createObjectURL(await response.blob());
     const link = document.createElement('a');
     link.href = url;
-    link.download = `coding-${encounterId}.${format === 'worksheet' ? 'html' : format}`;
+    const ext = format === 'worksheet' ? 'html' : format;
+    link.download = `coding-${encounterId}.${ext}`;
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+  },
+
+  async getClaimLines(encounterId: string): Promise<ClaimLines> {
+    return request(`/api/exports/encounter/${encounterId}/claim-lines`);
   },
 
   async downloadManifest(encounterId: string) {
