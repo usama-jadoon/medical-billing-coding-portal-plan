@@ -4,6 +4,7 @@ import {
   EncounterDetail,
   ReferenceItem,
   AuditEventItem,
+  BillingReviewInput, BillingSplit,
 } from './types';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -60,6 +61,11 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     try {
       const errJson = await res.json();
       errorDetail = errJson.error?.message || errJson.detail || errorDetail;
+      if (Array.isArray(errJson.error?.details)) {
+        errorDetail += ' ' + errJson.error.details.map((item: { loc: (string | number)[]; msg: string }) =>
+          `${item.loc.filter(part => part !== 'body').join('.')}: ${item.msg}`
+        ).join('; ');
+      }
     } catch {
       // fallback
     }
@@ -74,6 +80,17 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 }
 
 export const api = {
+  async detectSetting(file: File): Promise<{ coding_domain: string | null; message: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    return request('/api/cases/detect-setting', { method: 'POST', body: formData });
+  },
+  async getBillingSplit(id: string): Promise<{ version: number; split: BillingSplit | null }> {
+    return request(`/api/cases/${id}/split-billing`);
+  },
+  async acceptBillingSplit(id: string, data: BillingReviewInput): Promise<BillingSplit & { version: number }> {
+    return request(`/api/cases/${id}/split-billing`, { method: 'POST', body: JSON.stringify(data) });
+  },
   async login(email: string, password: string, otp_code = ''): Promise<{ access_token: string; user: User }> {
     return request('/api/auth/login', {
       method: 'POST',
@@ -153,11 +170,11 @@ export const api = {
     return request(`/api/audit${query}`);
   },
 
-  getExportUrl(encounterId: string, format: 'json' | 'csv' | 'worksheet'): string {
+  getExportUrl(encounterId: string, format: 'json' | 'csv' | 'worksheet' | 'collaboratemd'): string {
     return `${API_BASE}/api/exports/encounter/${encounterId}/${format}`;
   },
 
-  async downloadExport(encounterId: string, format: 'json' | 'csv' | 'worksheet') {
+  async downloadExport(encounterId: string, format: 'json' | 'csv' | 'worksheet' | 'collaboratemd') {
     const response = await fetch(this.getExportUrl(encounterId, format), {
       headers: { Authorization: `Bearer ${getAuthToken()}` },
     });
@@ -168,7 +185,7 @@ export const api = {
     const url = URL.createObjectURL(await response.blob());
     const link = document.createElement('a');
     link.href = url;
-    link.download = `coding-${encounterId}.${format === 'worksheet' ? 'html' : format}`;
+    link.download = `coding-${encounterId}.${format === 'worksheet' ? 'html' : format === 'collaboratemd' ? 'xlsx' : format}`;
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   },

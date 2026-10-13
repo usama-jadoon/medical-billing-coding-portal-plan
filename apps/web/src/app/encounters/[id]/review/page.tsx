@@ -171,7 +171,7 @@ export default function ReviewPage() {
   const hasSelectedBlocker = (encounter.validation_findings || []).some(f =>
     f.severity === 'BLOCK' && f.candidate_id && encounter.candidate_codes.some(c => c.id === f.candidate_id && c.status === 'approved')
   );
-  const handleExport = async (format: 'json' | 'csv' | 'worksheet' | 'manifest') => {
+  const handleExport = async (format: 'json' | 'csv' | 'worksheet' | 'manifest' | 'collaboratemd') => {
     setActionError(null);
     try {
       if (format === 'manifest') await api.downloadManifest(encounter.id);
@@ -235,6 +235,15 @@ export default function ReviewPage() {
 
           {['approved', 'exported'].includes(encounter.status) && (
             <div className="flex items-center space-x-1 border-r border-slate-200 pr-2 mr-2">
+              <Link href={`/encounters/new?case=${encounter.id}`} className="rounded-md border border-blue-300 px-2.5 py-1.5 text-xs font-semibold text-blue-700">Billing workspace</Link>
+              <button
+                onClick={() => handleExport('collaboratemd')}
+                title="Manual-entry worksheet. Verify import mapping. Facility lines are not available."
+                className="inline-flex items-center space-x-1 px-2.5 py-1.5 text-xs font-semibold rounded-md border border-emerald-700 bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                <Download className="h-3.5 w-3.5" />
+                <span>Download CollaborateMD Excel</span>
+              </button>
               <button
                 onClick={() => handleExport('json')}
                 className="inline-flex items-center space-x-1 px-2.5 py-1.5 text-xs font-semibold rounded-md border border-slate-300 bg-white hover:bg-slate-50 text-slate-700"

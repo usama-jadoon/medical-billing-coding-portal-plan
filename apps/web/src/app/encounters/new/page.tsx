@@ -1,194 +1,107 @@
 'use client';
-
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { ArrowLeft, ArrowRight, ShieldAlert, Building, Calendar, Hash } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { UploadCloud, Download, Loader2, ArrowLeft, Layers } from 'lucide-react';
 import { api } from '@/lib/api';
+import type { BillingSplit, EncounterDetail } from '@/lib/types';
+import { BillingEditor } from '@/components/billing-editor';
 
-const CODING_DOMAINS = [
-  { id: 'emergency_department', name: 'Emergency Department', defaultPos: '23', desc: 'Emergency E/M, trauma, acute urgent care' },
-  { id: 'professional_office', name: 'Professional / Office', defaultPos: '11', desc: 'Outpatient clinic, established/new patient E/M' },
-];
+const input = 'mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500';
+const pendingStates = ['created', 'ingesting', 'processing', 'ocr_ready', 'facts_ready', 'candidates_ready'];
 
 export default function NewEncounterPage() {
-  const router = useRouter();
-  const [domain, setDomain] = useState('emergency_department');
-  const [patientRef, setPatientRef] = useState('');
-  const [serviceDate, setServiceDate] = useState('');
-  const [pos, setPos] = useState('23');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [domain, setDomain] = useState('');
+  const [patient, setPatient] = useState('');
+  const [date, setDate] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [phase, setPhase] = useState('');
+  const [error, setError] = useState('');
+  const [suggestion, setSuggestion] = useState('');
+  const [encounter, setEncounter] = useState<EncounterDetail | null>(null);
+  const [caseId, setCaseId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [notes, setNotes] = useState('');
+  const [split, setSplit] = useState<BillingSplit | null>(null);
+  const [tab, setTab] = useState<'professional' | 'facility'>('professional');
+  const [canReview, setCanReview] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    api.getMe().then(user => { if (!cancelled) setCanReview(['Owner', 'Reviewer'].includes(user.role)); }).catch(err => { if (!cancelled) setError(err.message); });
+    const id = new URLSearchParams(window.location.search).get('case');
+    if (id) api.getEncounter(id).then(result => { if (!cancelled) { setCaseId(id); setEncounter(result); } }).catch(err => { if (!cancelled) setError(err.message); });
+    return () => { cancelled = true; };
+  }, []);
+  useEffect(() => {
+    if (!encounter || !pendingStates.includes(encounter.status)) return;
+    let cancelled = false;
+    const timer = setInterval(async () => {
+      try { const next = await api.getEncounter(encounter.id); if (!cancelled) { setEncounter(next); setPhase(`Server status: ${next.status.replaceAll('_', ' ')}`); } }
+      catch (err) { if (!cancelled) setError(err instanceof Error ? err.message : 'Status refresh failed.'); }
+    }, 2500);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [encounter]);
+  const approved = !!encounter && ['approved', 'exported'].includes(encounter.status);
+  useEffect(() => {
+    if (!encounter || !approved || encounter.coding_domain !== 'emergency_department') return;
+    let cancelled = false;
+    api.getBillingSplit(encounter.id).then(result => { if (!cancelled) setSplit(result.split); }).catch(err => { if (!cancelled) setError(err.message); });
+    return () => { cancelled = true; };
+  }, [encounter, approved]);
 
-  const handleDomainChange = (newDomain: string) => {
-    setDomain(newDomain);
-    const found = CODING_DOMAINS.find((d) => d.id === newDomain);
-    if (found) {
-      setPos(found.defaultPos);
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-
+  function chooseFile(next?: File) {
+    setSuggestion(''); setError('');
+    if (!next) { setFile(null); return; }
+    if (!/\.(pdf|txt)$/i.test(next.name)) { setFile(null); setError('Image OCR is unavailable. Use a searchable PDF or UTF-8 text.'); return; }
+    if (!next.size || next.size > 25 * 1024 * 1024) { setFile(null); setError('Choose a nonempty file up to 25 MB.'); return; }
+    setFile(next);
+  }
+  async function detect() {
+    if (!file) return; setBusy(true); setPhase('Inspecting source text for setting clues…'); setError('');
+    try { const result = await api.detectSetting(file); setSuggestion(result.coding_domain ? `${result.coding_domain === 'emergency_department' ? 'Emergency Department · POS 23' : 'Professional / Office · POS 11'} suggested. Confirm using the setting dropdown.` : result.message); }
+    catch (err) { setError(err instanceof Error ? err.message : 'Detection failed.'); }
+    finally { setBusy(false); setPhase(''); }
+  }
+  async function analyze(event: React.FormEvent) {
+    event.preventDefault(); if (!file) return; setBusy(true); setError(''); setSplit(null); setSelected([]);
     try {
-      const res = await api.createEncounter({
-        patient_reference: patientRef.trim(),
-        service_date: serviceDate.trim(),
-        coding_domain: domain,
-        place_of_service: pos.trim(),
-      });
-      // Direct forward to document upload step
-      router.push(`/encounters/${res.id}/upload`);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to create encounter.';
-      setError(msg);
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8 space-y-6">
-      <div className="flex items-center space-x-3">
-        <Link
-          href="/encounters"
-          className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition-colors"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Initiate New Coding Encounter</h1>
-          <p className="text-xs text-slate-500">
-            Step 1 of 2: Select coding domain and input patient pseudonymous reference.
-          </p>
-        </div>
-      </div>
-
-      {error && (
-        <div className="rounded-lg bg-red-50 p-3 text-xs text-red-700 border border-red-200">
-          {error}
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Domain Selection Grid */}
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-xs space-y-4">
-          <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
-            1. Select Coding Domain
-          </label>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {CODING_DOMAINS.map((d) => (
-              <button
-                key={d.id}
-                type="button"
-                onClick={() => handleDomainChange(d.id)}
-                className={`p-3.5 rounded-lg border text-left transition-all ${
-                  domain === d.id
-                    ? 'border-blue-600 bg-blue-50/70 shadow-xs ring-1 ring-blue-600'
-                    : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className={`text-xs font-bold ${domain === d.id ? 'text-blue-900' : 'text-slate-900'}`}>
-                    {d.name}
-                  </span>
-                  <span className="text-[10px] font-semibold text-slate-400">
-                    POS {d.defaultPos}
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-500 mt-1">{d.desc}</p>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Encounter Metadata */}
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-xs space-y-4">
-          <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
-            2. Encounter Details &amp; Privacy
-          </label>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700">
-                Patient Pseudonymous ID
-              </label>
-              <div className="relative mt-1">
-                <Hash className="pointer-events-none absolute inset-y-0 left-0 my-auto ml-3 h-4 w-4 text-slate-400" />
-                <input
-                  type="text"
-                  required
-                  value={patientRef}
-                  onChange={(e) => setPatientRef(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-xs focus:border-blue-600 focus:outline-hidden focus:ring-1 focus:ring-blue-600"
-                  placeholder="e.g. SYNTH-90210"
-                />
-              </div>
-              <p className="text-[10px] text-slate-400 mt-1">
-                Do not enter full patient names or SSNs.
-              </p>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700">
-                Date of Service
-              </label>
-              <div className="relative mt-1">
-                <Calendar className="pointer-events-none absolute inset-y-0 left-0 my-auto ml-3 h-4 w-4 text-slate-400" />
-                <input
-                  type="date"
-                  required
-                  value={serviceDate}
-                  onChange={(e) => setServiceDate(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-xs focus:border-blue-600 focus:outline-hidden focus:ring-1 focus:ring-blue-600"
-                />
-              </div>
-              <p className="text-[10px] text-slate-400 mt-1">
-                Determines active code set fiscal year.
-              </p>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700">
-                Place of Service (POS)
-              </label>
-              <div className="relative mt-1">
-                <Building className="pointer-events-none absolute inset-y-0 left-0 my-auto ml-3 h-4 w-4 text-slate-400" />
-                <input
-                  type="text"
-                  required
-                  value={pos}
-                  onChange={(e) => setPos(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-xs focus:border-blue-600 focus:outline-hidden focus:ring-1 focus:ring-blue-600"
-                  placeholder="e.g. 23 or 11"
-                />
-              </div>
-              <p className="text-[10px] text-slate-400 mt-1">
-                CMS POS Code (23=ED, 11=Office)
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Submit */}
-        <div className="flex items-center justify-between pt-2">
-          <div className="flex items-center space-x-1.5 text-xs text-slate-500">
-            <ShieldAlert className="h-4 w-4 text-emerald-600" />
-            <span>Development workspace · Use synthetic records.</span>
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="inline-flex items-center space-x-2 rounded-lg bg-blue-600 px-5 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50 transition-colors"
-          >
-            <span>{loading ? 'Creating...' : 'Continue to Document Upload'}</span>
-            <ArrowRight className="h-4 w-4" />
-          </button>
-        </div>
-      </form>
-    </div>
-  );
+      let id = caseId;
+      if (!id) { setPhase('Creating encounter…'); const created = await api.createEncounter({ patient_reference: patient.trim(), service_date: date, coding_domain: domain, place_of_service: domain === 'emergency_department' ? '23' : '11' }); id = created.id; setCaseId(id); window.history.replaceState(null, '', `?case=${encodeURIComponent(id)}`); }
+      setPhase('Uploading document and awaiting server analysis…'); await api.uploadDocument(id, file);
+      const review = await api.getEncounter(id); setEncounter(review); setPhase(`Server status: ${review.status.replaceAll('_', ' ')}`);
+    } catch (err) { setError(err instanceof Error ? err.message : 'Analysis failed.'); }
+    finally { setBusy(false); }
+  }
+  async function approve() {
+    if (!encounter) return; setBusy(true); setError('');
+    try { await api.submitReview(encounter.id, 'accept', notes, selected, encounter.version); setEncounter(await api.getEncounter(encounter.id)); }
+    catch (err) { setError(err instanceof Error ? err.message : 'Approval failed.'); }
+    finally { setBusy(false); }
+  }
+  async function download(format: 'collaboratemd' | 'json') {
+    if (!encounter) return; setBusy(true); setError('');
+    try { await api.downloadExport(encounter.id, format); }
+    catch (err) { setError(err instanceof Error ? err.message : 'Download failed.'); }
+    finally { setBusy(false); }
+  }
+  const rows = split ? (tab === 'professional' ? split.cms1500_lines : split.ub04_lines) : [];
+  return <div className="mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-8">
+    <header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-6"><div><Link href="/encounters" className="mb-3 inline-flex items-center gap-1 text-sm text-slate-500"><ArrowLeft className="h-4 w-4" />Encounters</Link><h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Medical Coding &amp; Claim Entry Workspace</h1><p className="mt-2 text-sm text-slate-500">Upload, inspect evidence, approve codes and review claim lines in one workspace.</p></div><span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800">Development catalogs · Human approval required</span></header>
+    {error && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
+    {!encounter && <form onSubmit={analyze} className="grid gap-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm lg:grid-cols-3">
+      <div className="lg:col-span-2"><h2 className="mb-3 text-sm font-semibold">1. Upload encounter record</h2><label onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); if (!busy) chooseFile(e.dataTransfer.files[0]); }} className="flex min-h-44 cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 p-6 text-center hover:border-blue-400"><UploadCloud className="h-10 w-10 text-slate-400" /><span className="text-sm font-medium">{file ? file.name : 'Click to upload or drag & drop'}</span><span className="text-xs text-slate-500">Searchable PDF or UTF-8 text · Up to 25 MB</span><input aria-label="Upload medical record" disabled={busy} type="file" accept=".pdf,.txt" className="sr-only" onChange={e => chooseFile(e.target.files?.[0])} /></label>{file && <button type="button" disabled={busy} onClick={() => chooseFile()} className="mt-2 text-xs text-slate-500">Remove {file.name} ({(file.size / 1024).toFixed(1)} KB)</button>}<p className="mt-3 text-xs text-slate-500">Scanned PDFs and images need an OCR adapter that is not currently available.</p></div>
+      <fieldset disabled={busy} className="space-y-3"><label className="block text-sm font-semibold">2. Confirm setting<select required disabled={!!caseId || busy} className={input} value={domain} onChange={e => setDomain(e.target.value)}><option value="">Select setting</option><option value="emergency_department">Emergency Department · POS 23</option><option value="professional_office">Professional / Office · POS 11</option></select></label><button type="button" disabled={!file || !!caseId} onClick={detect} className="text-xs font-semibold text-blue-700 disabled:opacity-40">Suggest setting from document</button>{suggestion && <p className="rounded-lg bg-amber-50 p-2 text-xs text-amber-800">{suggestion}</p>}<label className="block text-xs font-medium">Patient pseudonymous reference<input required disabled={!!caseId} maxLength={255} className={input} value={patient} onChange={e => setPatient(e.target.value)} placeholder="SYNTH-001" /></label><label className="block text-xs font-medium">Service date<input required disabled={!!caseId} type="date" className={input} value={date} onChange={e => setDate(e.target.value)} /></label><button disabled={!file || busy} type="submit" className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-700 px-4 py-3 text-sm font-semibold text-white disabled:opacity-40">{busy && <Loader2 className="h-4 w-4 animate-spin" />}{busy ? 'Processing…' : caseId ? 'Retry document analysis' : 'Start Analysis & Coding'}</button></fieldset>
+    </form>}
+    {phase && (busy || !encounter) && <p role="status" className="text-sm text-slate-600">{phase}</p>}
+    {encounter && <>
+      <div className="flex flex-wrap justify-between gap-3 rounded-xl border border-slate-200 bg-white p-5"><div><h2 className="font-semibold">{encounter.patient_reference}</h2><p className="text-sm text-slate-500">DOS {encounter.service_date} · POS {encounter.place_of_service} · {encounter.status.replaceAll('_', ' ')}</p></div><div className="flex items-center gap-4"><Link href={`/encounters/${encounter.id}/review`} className="text-sm font-semibold text-blue-700">Detailed evidence review</Link><a href="/encounters/new" className="text-sm text-slate-600">New case</a></div></div>
+      {!approved && <section className="rounded-xl border border-slate-200 bg-white p-5"><h2 className="mb-4 font-semibold">3. Review extracted candidates</h2>{!encounter.candidate_codes.length && <p className="text-sm text-slate-500">{pendingStates.includes(encounter.status) ? 'Waiting for server analysis. Results refresh automatically.' : 'No candidates available. Open detailed review to inspect processing findings or upload a corrected source.'}</p>}<div className="grid gap-3 sm:grid-cols-2">{encounter.candidate_codes.map(c => <label key={c.id} className="rounded-lg border border-slate-200 p-4"><div className="flex items-center gap-2"><input type="checkbox" disabled={busy || !canReview} checked={selected.includes(c.id)} onChange={e => setSelected(prev => e.target.checked ? [...prev, c.id] : prev.filter(id => id !== c.id))} /><strong className="font-mono text-blue-900">{c.code}</strong><span className="text-xs text-slate-500">{c.code_system}</span></div><p className="my-2 text-xs text-slate-600">{c.rationale}</p>{c.supporting_evidence.map(ev => <blockquote key={ev.id} className="my-1 border-l-2 border-blue-200 pl-3 text-xs text-slate-600">Page {ev.page_number}: {ev.quoted_text}</blockquote>)}{c.rule_results.filter(r => r.status === 'FAIL' || r.status === 'WARNING').map(r => <p key={r.rule_id} className="mt-2 text-xs text-amber-800">{r.status}: {r.message}</p>)}</label>)}</div>{canReview && encounter.candidate_codes.length > 0 && <><label className="mt-4 block text-sm font-medium">Coding review notes<textarea className={input} value={notes} onChange={e => setNotes(e.target.value)} /></label><button disabled={busy || !selected.length || pendingStates.includes(encounter.status)} onClick={approve} className="mt-3 rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40">Approve selected codes</button></>}</section>}
+      {approved && encounter.coding_domain === 'emergency_department' && canReview && <BillingEditor key={`${encounter.id}:${encounter.version}`} initialOpen={!split} encounter={encounter} onSaved={async result => { setSplit(result); setEncounter(await api.getEncounter(encounter.id)); }} />}
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"><div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 p-4"><div role="tablist" aria-label="Claim results" className="flex rounded-lg bg-slate-200 p-1"><button role="tab" aria-selected={tab === 'professional'} onClick={() => setTab('professional')} className={`rounded-md px-3 py-2 text-xs font-semibold ${tab === 'professional' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600'}`}>CMS-1500 · Professional</button>{encounter.coding_domain === 'emergency_department' && <button role="tab" aria-selected={tab === 'facility'} onClick={() => setTab('facility')} className={`flex items-center gap-1 rounded-md px-3 py-2 text-xs font-semibold ${tab === 'facility' ? 'bg-white text-purple-700 shadow-sm' : 'text-slate-600'}`}><Layers className="h-3 w-3" />UB-04 · Facility</button>}</div><div className="flex gap-2"><button disabled={!approved || busy} onClick={() => download('collaboratemd')} className="flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-xs font-semibold text-white disabled:opacity-40"><Download className="h-4 w-4" />Download CollaborateMD Excel</button><button disabled={!approved || busy} onClick={() => download('json')} className="rounded-lg border px-3 py-2 text-xs disabled:opacity-40">JSON</button></div></div>
+        {split?.warnings.map(w => <p key={w} className="border-b border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-800">{w}</p>)}
+        <div role="tabpanel" className="overflow-x-auto">{rows.length ? <table className="w-full text-left text-xs"><thead className="bg-slate-100 text-slate-700"><tr>{['DOS', 'Primary DX', 'Secondary DX', ...(tab === 'facility' ? ['Rev code'] : []), 'CPT / HCPCS', 'Modifiers', 'Pointer', 'Units', 'Source justification', 'Status'].map(h => <th key={h} className="whitespace-nowrap p-3">{h}</th>)}</tr></thead><tbody>{rows.map(row => <tr key={row.candidate_id} className="border-t border-slate-200"><td className="p-3">{row.dos}</td><td className="p-3 font-mono">{row.primary_dx}</td><td className="p-3">{row.secondary_dx || '—'}</td>{tab === 'facility' && <td className="p-3 font-mono font-bold text-purple-700">{row.rev_code}</td>}<td className="p-3 font-mono font-bold">{row.cpt}</td><td className="p-3">{row.mod || '—'}</td><td className="p-3">{row.pointer}</td><td className="p-3">{row.units}</td><td className="min-w-64 whitespace-pre-wrap p-3 text-slate-600">{row.justification}</td><td className="p-3 text-emerald-700">Review accepted</td></tr>)}</tbody></table> : <p className="p-6 text-sm text-slate-500">{approved ? tab === 'facility' ? 'No facility lines accepted. Review facility resources and revenue categories above.' : 'No billing lines accepted. ED claims require explicit billing review; the Excel worksheet retains approved codes with unreviewed fields blank.' : 'Claim results appear after code approval and billing review.'}</p>}</div>
+        <footer className="border-t border-slate-200 bg-slate-50 p-3 text-xs text-slate-500">{rows.length} reviewed lines · Manual-entry worksheet; CollaborateMD import compatibility is not verified.</footer>
+      </section>
+    </>}
+  </div>;
 }

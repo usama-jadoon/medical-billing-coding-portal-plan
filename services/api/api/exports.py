@@ -1,15 +1,21 @@
 import io
 import csv
+import hashlib
+from datetime import date
+from starlette.concurrency import run_in_threadpool
+from starlette.background import BackgroundTask
+from services.api.collaboratemd import create_collaboratemd_workbook
+from services.api.workflow.split_billing import get_reviewed_split
 from html import escape
 from services.api.workflow.approval import validate_export
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from services.api.db.session import get_db
-from services.api.db.models import Encounter, CodeCandidate, Review, AuditEvent
+from services.api.db.models import Encounter, CodeCandidate, Review, AuditEvent, User
 from services.api.security.tenant import get_current_tenant
 from services.api.security.tenant import get_fresh_user
 from services.api.utils.logging import audit_logger
@@ -42,6 +48,70 @@ async def _get_encounter_for_export(encounter_id: str, tenant_id: str, db: Async
         )
     await validate_export(db, encounter)
     return encounter
+
+
+@router.get("/encounter/{encounter_id}/collaboratemd")
+async def export_collaboratemd(
+    encounter_id: str,
+    db: AsyncSession = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+    user: User = Depends(get_fresh_user),
+):
+    encounter = await _get_encounter_for_export(encounter_id, tenant_id, db)
+    approved = sorted((c for c in encounter.code_candidates
+                       if c.status == "approved" and not c.human_review_required
+                       and c.snapshot_id == encounter.active_snapshot_id), key=lambda c: (c.code_system, c.code, c.id))
+
+    def evidence(candidate):
+        return "\n".join(f"Document {ev.document_id}, page {ev.page_number}: {ev.quoted_text}"
+                         for ev in sorted(candidate.supporting_evidence, key=lambda ev: (ev.document_id, ev.page_number, ev.start_offset)))
+
+    payload = {
+        "encounter_id": encounter.id,
+        "patient_reference": encounter.patient.external_reference,
+        "snapshot_id": encounter.active_snapshot_id,
+        "is_facility": encounter.coding_domain == "emergency_department",
+        "cms1500_lines": [{"dos": date.fromisoformat(encounter.service_date),
+                           "pos": encounter.place_of_service, "cpt": c.code,
+                           "justification": evidence(c)}
+                          for c in approved if c.code_system in {"CPT", "HCPCS"}],
+        "diagnoses": [{"code": c.code, "version": c.code_version, "evidence": evidence(c)}
+                      for c in approved if c.code_system == "ICD-10-CM"],
+    }
+    split = await get_reviewed_split(db, encounter) if payload['is_facility'] else None
+    if split:
+        payload.update(cms1500_lines=split['cms1500_lines'], ub04_lines=split['ub04_lines'],
+                       billing_review_id=split['billing_review_id'])
+        for line in payload['cms1500_lines'] + payload['ub04_lines']:
+            line['dos'] = date.fromisoformat(line['dos'])
+    try:
+        stream = await run_in_threadpool(create_collaboratemd_workbook, payload)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    digest = hashlib.sha256(stream.getbuffer()).hexdigest()
+    db.add(AuditEvent(organization_id=tenant_id, actor_id=user.id,
+                      event_type="encounter_exported_xlsx", entity_type="encounter", entity_id=encounter.id,
+                      metadata_json={"export_format": "XLSX", "snapshot_id": encounter.active_snapshot_id,
+                                     "sha256": digest, "candidate_ids": [c.id for c in approved],
+                                     "facility_lines_available": bool(split and split['ub04_lines']),
+                                     "billing_review_id": split['billing_review_id'] if split else None}))
+    try:
+        await db.commit()
+    except Exception:
+        stream.close()
+        raise
+
+    def chunks():
+        while chunk := stream.read(64 * 1024):
+            yield chunk
+
+    return StreamingResponse(chunks(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        background=BackgroundTask(stream.close),
+        headers={"Content-Disposition": f'attachment; filename="CollaborateMD_Encounter_{encounter.id}.xlsx"',
+                 "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
+                 "Content-Length": str(stream.getbuffer().nbytes),
+                 "Access-Control-Expose-Headers": "Content-Disposition"})
 
 
 @router.get("/encounter/{encounter_id}/json")

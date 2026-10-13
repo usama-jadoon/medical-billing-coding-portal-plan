@@ -14,11 +14,12 @@ def test_totp_reference_vector(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_stale_signin_cannot_export(client, seed_data):
+@pytest.mark.parametrize('format', ['json', 'collaboratemd'])
+async def test_stale_signin_cannot_export(client, seed_data, format):
     import jwt
     token = jwt.encode({'sub': seed_data['user_reviewer'].id, 'iat': int(time.time()) - 600,
                         'exp': int(time.time()) + 600}, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
-    response = await client.get('/api/exports/encounter/enc-1/json', headers={'Authorization': 'Bearer ' + token})
+    response = await client.get(f'/api/exports/encounter/enc-1/{format}', headers={'Authorization': 'Bearer ' + token})
     assert response.status_code == 401
 
 

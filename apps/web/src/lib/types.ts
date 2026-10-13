@@ -171,3 +171,28 @@ export interface AuditEventItem {
   metadata: Record<string, unknown>;
   created_at: string;
 }
+
+export interface SourceSpan {
+  page_number: number; start_offset: number; end_offset: number; quoted_text: string;
+}
+export interface BillingLineInput {
+  claim_type: 'professional' | 'facility'; candidate_id: string;
+  service_type: 'EM' | 'PROCEDURE' | 'LAB' | 'RADIOLOGY' | 'MEDICATION' | 'INFUSION' | 'SUPPLY' | 'EKG';
+  units: number; modifiers: ('25' | '26' | 'TC' | 'RT' | 'LT')[];
+  diagnosis_pointers: number[]; supporting_evidence_ids: string[];
+  revenue_category?: string; facility_policy_reference?: string; facility_basis?: SourceSpan;
+  modifier_basis_evidence_ids: string[]; component_policy_reference?: string;
+}
+export interface BillingLineOutput {
+  candidate_id: string; cpt: string; dos: string; pos: string; primary_dx: string;
+  secondary_dx: string; pointer: string; units: number; mod1: string; mod2: string;
+  mod: string; justification: string; rev_code?: string; rev_desc?: string;
+}
+export interface BillingSplit {
+  cms1500_lines: BillingLineOutput[]; ub04_lines: BillingLineOutput[];
+  warnings: string[]; billing_review_id: string; ruleset_version: string;
+}
+export interface BillingReviewInput {
+  version: number; snapshot_id: string; diagnosis_candidate_ids: string[];
+  notes: string; lines: BillingLineInput[];
+}

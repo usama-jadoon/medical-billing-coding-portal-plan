@@ -24,8 +24,65 @@ from services.api.utils.logging import audit_logger
 from services.api.config import settings
 from services.api.workflow.approval import validate_selection, validate_export
 from services.coding_engine.providers.base import CodeSetVersionProvider
+from services.rules_engine.rulesets.er_split_billing import SplitBillingReview
+from services.api.workflow.split_billing import resolve_split, get_reviewed_split
 
 router = APIRouter(prefix="/cases", tags=["cases"])
+
+
+@router.post('/detect-setting')
+async def detect_setting(file: UploadFile = File(...), user: User = Depends(get_current_user)):
+    """Suggest a supported setting from source text; user confirmation is required."""
+    import re
+    from services.api.api.documents import validate_file_signature, MAX_FILE_SIZE
+    from services.ocr.local_ocr import LocalOCRProvider
+    from starlette.concurrency import run_in_threadpool
+    import asyncio
+    require_roles([Roles.OWNER, Roles.ADMIN, Roles.CODER, Roles.REVIEWER])(user)
+    content = await file.read(MAX_FILE_SIZE + 1)
+    validate_file_signature(content, file.filename or '', file.content_type or '')
+    try:
+        result = await run_in_threadpool(lambda: asyncio.run(LocalOCRProvider().process(content, file.filename or '')))
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    text = '\n'.join(page.text for page in result.pages)
+    ed = bool(re.search(r'\bemergency (department|room)\b|\bPOS\s*[:=]?\s*23\b', text, re.I))
+    office = bool(re.search(r'\bphysician office\b|\bPOS\s*[:=]?\s*11\b', text, re.I))
+    return {'coding_domain': ('emergency_department' if ed else 'professional_office') if ed != office else None,
+            'confirmation_required': True, 'method': 'source-text-keywords',
+            'message': 'Confirm the suggested setting before analysis.' if ed != office else
+                       'No unambiguous supported setting found. Select it manually.'}
+
+
+@router.post("/{case_id}/split-billing")
+async def accept_split_billing(case_id: str, req: SplitBillingReview,
+                              db: AsyncSession = Depends(get_db), user: User = Depends(get_fresh_user)):
+    require_roles([Roles.OWNER, Roles.REVIEWER])(user)
+    case = (await db.execute(select(Encounter).where(Encounter.id == case_id,
+                                  Encounter.organization_id == user.organization_id))).scalar_one_or_none()
+    if not case:
+        raise HTTPException(404, 'Case not found.')
+    if req.version != case.version:
+        raise HTTPException(409, 'Case changed. Reload before accepting billing lines.')
+    output, approval_id = await resolve_split(db, case, req)
+    event = AuditEvent(organization_id=user.organization_id, actor_id=user.id,
+        event_type='er_split_billing_accepted', entity_type='case', entity_id=case.id,
+        metadata_json={'request': req.model_dump(mode='json'), 'approval_id': approval_id,
+                       'ruleset_version': output['ruleset_version'], 'warnings': output['warnings']})
+    db.add(event)
+    case.version += 1
+    await db.commit()
+    return {**output, 'billing_review_id': event.id, 'version': case.version}
+
+
+@router.get("/{case_id}/split-billing")
+async def read_split_billing(case_id: str, db: AsyncSession = Depends(get_db),
+                            user: User = Depends(get_fresh_user)):
+    case = (await db.execute(select(Encounter).where(Encounter.id == case_id,
+                                  Encounter.organization_id == user.organization_id))).scalar_one_or_none()
+    if not case:
+        raise HTTPException(404, 'Case not found.')
+    return {'version': case.version, 'split': await get_reviewed_split(db, case)}
 
 
 @router.post("/{case_id}/documents", status_code=201)
@@ -532,6 +589,7 @@ async def export_case_manifest(
         {"code": c.code, "system": c.code_system, "version": c.code_version}
         for c in candidates
     ]
+    split_billing = await get_reviewed_split(db, case) if case.coding_domain == 'emergency_department' else None
 
     manifest_payload = {
         "manifest_id": str(uuid.uuid4()),
@@ -543,6 +601,7 @@ async def export_case_manifest(
         "source_document_version_id": snapshot.source_document_version_id,
         "provenance": snapshot.provenance_json,
         "approved_codes": approved_codes,
+        "split_billing": split_billing,
         "reviewer_id": current_user.id,
         "exported_at": datetime.now(timezone.utc).isoformat(),
         "signature_algorithm": "HMAC-SHA256",

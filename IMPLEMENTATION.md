@@ -15,6 +15,9 @@ This repository implements a runnable development slice of the attached technica
 - Versioned review commands, SQLAlchemy optimistic write protection, explicit candidate selection, and accept/reject/uncertain/documentation decisions.
 - Approval and exports share one policy: resolve the pinned source, verify original bytes and quote spans, recheck candidate retrieval and selected-code rules, and reject unavailable policies.
 - Authenticated JSON/CSV/printable HTML downloads with approved candidates only. CSV formula protection and HTML escaping.
+- CollaborateMD manual-entry Excel worksheet (`GET /api/exports/encounter/{id}/collaboratemd`) with approved CPT/HCPCS lines, actual service date/POS, pinned source evidence and an unsequenced approved diagnosis list. Uses the same fresh-login, tenant and source-integrity gate. The review screen exposes **Download CollaborateMD Excel** after approval. Files are returned from an in-memory buffer; generated XLSX files are not retained by the application. Each successful generation records its SHA-256, snapshot and actor in the audit log.
+- ED workbooks include a UB-04 tab. Explicitly accepted split-billing reviews populate both professional and facility rows, diagnosis order, pointers, units and selected modifiers. Without a billing review, institutional rows remain unavailable and missing professional claim fields remain blank. Professional codes are never automatically copied into facility charges. Other profiles receive the professional tab only. This is a manual-entry worksheet, not a verified CollaborateMD import template or a complete submission-ready claim.
+- The Excel serializer uses an in-memory worksheet writer to avoid openpyxl's default temporary XML files. `openpyxl` is pinned to 3.1.5 because this override uses its internal writer API; verify serialization and the no-temporary-files test before changing the dependency.
 - HMAC-SHA256 manifests covering the complete export payload. These use the application secret in development; they are not public-key signatures or managed-key attestations.
 - Transactional outbox, synchronous local processing, durable `outbox` worker, duplicate delivery handling, visible failed events, and snapshot provenance for OCR/extractor/catalog/rules versions.
 - Additive database migrations with SQLite backup support. Database triggers reject edits/deletes of prior audit events on SQLite and PostgreSQL.
@@ -45,6 +48,33 @@ pnpm dev:web
 Open http://localhost:3000. Create a case, confirm its service date and profile, upload a searchable PDF or the provided synthetic fixture, inspect facts and findings, select supported candidates, enter review notes, and approve. Approved cases expose authenticated exports and a signed manifest. Reauthenticate if an approval/export is attempted more than five minutes after sign-in.
 
 The existing seeded reviewer can be used to explore an existing development database when `OWNER_EMAIL` is unset. Demo credentials are offered on the development login screen. Old approvals without valid snapshots require a new source upload and review.
+
+## Coding workspace
+
+`/encounters/new` combines file picker/drag-and-drop, patient reference, actual service date, setting confirmation, live candidate/evidence review, coding approval, ED billing review, professional/facility results and authenticated Excel/JSON downloads. Setting suggestions use authenticated `POST /api/cases/detect-setting` with actual searchable PDF/text extraction and keyword matching; ambiguous settings remain unselected and suggestions always require manual confirmation. Unsupported specialties and image/scanned OCR are not advertised as active.
+
+The workspace displays server statuses and polls pending asynchronous analysis. It does not simulate OCR progress, NCCI activation or approved claim data. Code candidates are unchecked initially; only the authenticated Owner/Reviewer sees approval/billing controls. Failed processing and policy errors remain visible. A created case ID is retained in the URL to avoid making a new case on an upload retry. Existing cases can resume at `/encounters/new?case={id}`.
+
+The billing editor lets the reviewer select diagnosis order, claim routing, approved service codes, units, pointers, evidence, modifiers and policy references. Facility text selection maps DOM UTF-16 and normalized newlines back to the pinned source's Unicode offsets. Accepted billing reviews show live CMS-1500/UB-04 rows, and the editor collapses after acceptance. Office cases continue to export approved code worksheets; complete office claim-line editing is not implemented. Browser verification covered a synthetic ED upload, real setting detection, coding approval, separate physician/facility selections with CRLF/emoji source text, revenue-code results and a downloaded workbook.
+
+## ED split-billing review API
+
+After coding approval, an Owner or Reviewer can submit `POST /api/cases/{id}/split-billing` using a fresh authenticated session. `GET` on the same route returns the current split, its warnings and case version. The workspace at `/encounters/new` provides the billing editor; existing approved cases can open it through the review screen's **Billing workspace** link. Structured requests also remain available through `/docs`.
+
+Each request includes `version`, `snapshot_id`, an ordered `diagnosis_candidate_ids` array, nonempty review `notes`, and `lines`. Each line specifies:
+
+- `claim_type`: `professional` or `facility` (explicit routing, no automatic duplication).
+- `candidate_id`: an approved CPT/HCPCS candidate from the active snapshot.
+- `service_type`: `EM`, `PROCEDURE`, `LAB`, `RADIOLOGY`, `MEDICATION`, `INFUSION`, `SUPPLY`, or `EKG`.
+- `units`: an explicitly selected positive integer; no default units.
+- `diagnosis_pointers`: one to four 1-based positions in the selected diagnosis sequence.
+- `supporting_evidence_ids`: evidence supporting the chosen candidate.
+- Optional `modifiers`: up to two supported development modifiers (`25`, `26`, `TC`, `RT`, `LT`), with `modifier_basis_evidence_ids`. Modifier 25 is never added merely because a procedure exists. Component modifiers additionally require a `component_policy_reference`; the current implementation does not establish eligibility from authoritative PC/TC data.
+- For facility lines: a `revenue_category`, `facility_policy_reference`, and `facility_basis` containing `page_number`, `start_offset`, `end_offset`, and `quoted_text` matching the pinned source exactly. The reviewer must independently assess facility resources and level. The current sample catalogs restrict services to supported approved candidates; independently coded facility levels and unsupported procedures need catalog/retrieval expansion.
+
+Revenue categories include `ER_FACILITY` (0450), `ER_SCREENING` (0451, EMTALA screening), `LABORATORY` (0300), `LAB_HEMATOLOGY` (0305), `RADIOLOGY_DIAG` (0320), `CT_SCAN` (0350), `PHARMACY` (0250), `IV_THERAPY` (0260), `SUPPLIES` (0270), and `EKG` (0730). Categories are selected explicitly rather than inferred from description keywords. Definitions: [CMS revenue center reference](https://bluebutton.cms.gov/resources/variables/rev_cntr/). Modifier guidance: [CMS NCCI FAQ](https://www.cms.gov/medicare/coding-billing/national-correct-coding-initiative-ncci-edits/medicare-ncci-faq-library). Facility-level guidance: [CMS Claims Processing Manual, Chapter 4](https://edit.cms.gov/Regulations-and-Guidance/Guidance/Manuals/Downloads/clm104c04.pdf).
+
+Billing acceptance consumes the case version and creates an append-only audit event with the request, actor, ruleset and coding approval ID. Source changes, coding reapproval, missing evidence or unavailable rulesets block reuse. Excel exports rerun validation and record the billing review ID. Signed JSON manifests include the reviewed split. No database migration is needed for these immutable billing review events. Full dated catalog, payer, NCCI, MUE and PC/TC activation controls remain unavailable, and output reports that limitation.
 
 ## Durable worker
 

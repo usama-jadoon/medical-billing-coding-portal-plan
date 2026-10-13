@@ -2,6 +2,8 @@
 
 The runnable evidence-first development implementation, setup commands, verification steps, and remaining production work are documented in [IMPLEMENTATION.md](IMPLEMENTATION.md).
 
+The consolidated product roadmap, specialty coverage gaps, and business assumptions are documented in [MASTER_PLAN.md](MASTER_PLAN.md).
+
 Start the API on port 8000 and the web app on port 3000. Create a case, upload a searchable PDF or synthetic text, inspect evidence, select codes, approve, and export. Development catalogs and local storage are active; production processing is disabled.
 
 ## Goal
