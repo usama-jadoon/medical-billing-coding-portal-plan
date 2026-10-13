@@ -149,7 +149,7 @@ export const api = {
     });
   },
 
-  async submitReview(encounterId: string, decision: string, notes: string, approvedCandidateIds: string[], version: number): Promise<unknown> {
+  async submitReview(encounterId: string, decision: string, notes: string, approvedCandidateIds: string[], version: number, acceptedModifiers: Record<string, string[]> = {}): Promise<unknown> {
     return request(`/api/cases/${encounterId}/decisions`, {
       method: 'POST',
       body: JSON.stringify({
@@ -157,6 +157,7 @@ export const api = {
         notes,
         approved_candidate_ids: approvedCandidateIds,
         version,
+        accepted_modifiers: acceptedModifiers,
       }),
     });
   },

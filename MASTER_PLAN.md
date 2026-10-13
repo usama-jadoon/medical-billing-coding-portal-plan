@@ -53,8 +53,8 @@ The latest completed verification included 72 backend tests, web lint/build, and
 |---|---|---|
 | ED | Development profile and reviewed split worksheet | Independent facility-level catalog/rules, full dated edits and qualified case evaluation |
 | Physician office | Development candidates and approved code worksheet | Full E/M criteria, new/established status, verified catalog and complete claim-line editor |
-| Behavioral health | Not exposed as a supported profile | Documented psychotherapy minutes, service context, add-on prerequisites, applicable telehealth/payer policy, catalog and evidence tests |
-| DME | Not exposed as a supported profile | Verified HCPCS catalog, item/quantity/order evidence, new/rental status, coverage prerequisites and supported modifier/documentation rules |
+| Behavioral health | Bounded v0.2 development profile | Full catalogs/payer policy and clinical evaluation; audio-only policy unavailable |
+| DME | Bounded v0.2 CPAP/specified-bed development profile | Full HCPCS/coverage policy, independent documentation verification and equipment expansion |
 | Inpatient | Not exposed as a supported profile | Separate professional and institutional workflows, applicable inpatient diagnosis/procedure rules, encounter/timing criteria and facility data |
 | Dental | Mock adapter exists; no activated dental workflow | Approved CDT catalog, tooth/surface evidence, dental review UI and a verified ADA-oriented export |
 
@@ -80,4 +80,4 @@ Until those measurements exist, describe the product's actual capabilities: sour
 
 ## Immediate next work
 
-The next technical increment is bounded Behavioral Health and DME development profiles with synthetic fixtures and the existing evidence/approval gates. Define the supported services and applicable catalog/policy sources before exposing those profiles in the UI. Keep business onboarding and operational preparation tracked separately from software implementation.
+Bounded Behavioral Health and DME development profiles are documented in [V02_IMPLEMENTATION.md](V02_IMPLEMENTATION.md). The next technical increment is expanding verified catalogs/payer policies and evaluating those profiles with qualified reviewers. Keep business onboarding and operational preparation tracked separately from software implementation.

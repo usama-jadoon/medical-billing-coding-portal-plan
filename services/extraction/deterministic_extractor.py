@@ -159,6 +159,9 @@ class DeterministicFactExtractor(FactExtractionProvider):
         if not has_diagnosis:
             warnings.append("No explicit assessment or primary diagnosis statement detected.")
 
+        from services.extraction.specialty_extractor import extract_specialty
+        facts.extend(extract_specialty(document_id, pages, domain))
+
         return ExtractionResult(
             facts=facts,
             missing_documentation=missing_docs,

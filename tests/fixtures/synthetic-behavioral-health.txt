@@ -1,0 +1,10 @@
+SYNTHETIC DOCUMENT - NO REAL PHI
+Date of Service: 2026-09-22
+Service kind: PSYCHOTHERAPY
+Psychotherapy duration: 45 minutes
+Patient present: yes
+Telehealth: no
+Separate medical E/M: yes
+Separate E/M MDM: LOW
+Establishment confirmed: yes
+Signed by: Synthetic clinician

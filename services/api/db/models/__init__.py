@@ -172,6 +172,7 @@ class CodeCandidate(Base):
     code_version: Mapped[str] = mapped_column(String(50), default="FY2026", nullable=False)
     status: Mapped[str] = mapped_column(String(50), default="candidate", nullable=False, index=True)  # candidate, approved, rejected, modified
     rationale: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    modifiers_json: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     human_review_required: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
 

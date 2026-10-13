@@ -128,7 +128,8 @@ export default function ReviewPage() {
         decision,
         notes,
         approvedIds,
-        encounter.version
+        encounter.version,
+        Object.fromEntries(encounter.candidate_codes.filter(c => approvedIds.includes(c.id)).map(c => [c.id, c.proposed_modifiers || []]))
       );
       setActionSuccess(`Case successfully recorded as ${decision.toUpperCase()}!`);
       const updated = await api.getEncounter(encounter.id);
@@ -564,6 +565,7 @@ export default function ReviewPage() {
                     {/* Rationale */}
                     <p className="text-xs text-slate-600 leading-snug">
                       {cand.rationale}
+                      {!!cand.proposed_modifiers?.length && <span className="block mt-1 font-semibold text-blue-800">Select to accept code and modifiers: {cand.proposed_modifiers.join(', ')}</span>}
                     </p>
 
                     {/* Rule Results */}
