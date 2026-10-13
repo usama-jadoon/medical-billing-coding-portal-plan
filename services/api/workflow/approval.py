@@ -88,9 +88,11 @@ async def validate_selection(db, case, candidate_ids, accepted_modifiers=None):
             raise HTTPException(400, "Approval blocked: Selected candidate has a failed deterministic rule.")
         payload.append({"code": candidate.code, "code_system": candidate.code_system,
                         "code_version": candidate.code_version, "supporting_evidence": evidence})
+    from services.worker.sync.validation import catalog_findings
+    reference_findings = await catalog_findings(db, payload, case.service_date)
     result = get_validation_pipeline().validate_case(
         domain=case.coding_domain, service_date=case.service_date, place_of_service=case.place_of_service,
-        facts=fact_payload, candidates=payload,
+        facts=fact_payload, candidates=payload, reference_findings=reference_findings,
     )
     if result.has_blockers:
         messages = [f.message for f in result.findings if f.severity == "BLOCK"]

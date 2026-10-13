@@ -231,12 +231,15 @@ async def run_encounter_pipeline(encounter_id: str, document_id: str, db: AsyncS
 
     # 6. Execute 8-Stage Deterministic Validation Pipeline
     val_pipeline = get_validation_pipeline()
+    from services.worker.sync.validation import catalog_findings
+    reference_findings = await catalog_findings(db, candidates_data, encounter.service_date)
     val_result = val_pipeline.validate_case(
         domain=encounter.coding_domain,
         service_date=encounter.service_date,
         place_of_service=encounter.place_of_service,
         facts=created_facts,
         candidates=candidates_data,
+        reference_findings=reference_findings,
     )
 
     for finding in val_result.findings:

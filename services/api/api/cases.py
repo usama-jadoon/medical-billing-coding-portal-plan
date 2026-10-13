@@ -323,6 +323,10 @@ async def get_case_review(
     findings_stmt = select(ValidationFinding).where(ValidationFinding.case_id == case_id, ValidationFinding.snapshot_id == case.active_snapshot_id)
     findings_res = await db.execute(findings_stmt)
     findings = findings_res.scalars().all()
+    from services.worker.sync.validation import catalog_findings
+    live_findings = await catalog_findings(db,
+        [{'code': c.code, 'code_system': c.code_system} for c in case.code_candidates if c.snapshot_id == case.active_snapshot_id],
+        case.service_date)
     from services.coding_engine.specialty import assess_specialty
     specialty_status = assess_specialty(case.coding_domain,
         [{'fact_type': f.fact_type, 'value': f.value_json, 'evidence': {'id': f.evidence.id, 'quoted_text': f.evidence.quoted_text} if f.evidence else None}
@@ -425,7 +429,9 @@ async def get_case_review(
                         "source_reference": rr.source_reference,
                     }
                     for rr in c.rule_results
-                ],
+                ] + [{'rule_id': vf.rule_id, 'status': 'FAIL', 'message': vf.message,
+                      'source_reference': vf.source_reference} for vf in live_findings
+                     if vf.candidate_code in {None, c.code}],
             }
             for c in case.code_candidates if c.snapshot_id == case.active_snapshot_id
         ],
@@ -439,8 +445,11 @@ async def get_case_review(
                 "source_reference": vf.source_reference,
                 "candidate_id": vf.candidate_id,
             }
-            for vf in findings
-        ],
+            for vf in findings if not vf.rule_id.startswith('LIVE-CATALOG-')
+        ] + [{**vf.model_dump(exclude={'candidate_code'}), 'id': f'live-{index}',
+              'candidate_id': next((c.id for c in case.code_candidates
+                  if c.snapshot_id == case.active_snapshot_id and c.code == vf.candidate_code), None)}
+             for index, vf in enumerate(live_findings)],
         "reviews": [
             {
                 "id": r.id,

@@ -4,6 +4,24 @@ from pydantic import Field
 
 
 class Settings(BaseSettings):
+    POLICY_SYNC_ENABLED: bool = False
+    POLICY_SYNC_CRON: str = '0 0 * * *'
+    POLICY_CACHE_TTL_HOURS: int = 24
+    MCA_CODE_API_PROVIDER: str = 'findacode'
+    MCA_CODE_API_BASE_URL: str = 'https://api.findacode.com/v1'
+    # Explicit normalization adapter endpoints; base URL alone is not a contract.
+    MCA_CODE_API_VALIDITY_URL: str = ''
+    MCA_CODE_API_CATALOG_URL: str = ''
+    MCA_CODE_API_KEY: str = ''
+    MCA_CODE_API_SECRET: str = ''
+    CMS_COVERAGE_API_BASE_URL: str = 'https://api.coverage.cms.gov'
+    DEFAULT_MAC_JURISDICTION: str = 'JH'
+    DEFAULT_DME_MAC_JURISDICTION: str = 'JC'
+    DEFAULT_STATE_CODE: str = 'TX'
+    # CMS accepts numeric contractor/state IDs, not jurisdiction abbreviations.
+    CMS_CONTRACTOR_ID: int | None = None
+    CMS_STATE_ID: int | None = None
+    PAYER_POLICY_FEEDS_JSON: str = '[]'
     APP_NAME: str = "Medical Billing & Coding Portal"
     APP_ENV: str = "development"
     DEBUG: bool = True
