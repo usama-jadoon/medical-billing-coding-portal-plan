@@ -1,0 +1,1 @@
+"""Daily reference synchronization."""

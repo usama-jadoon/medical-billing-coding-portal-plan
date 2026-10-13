@@ -91,3 +91,7 @@ For MVP, implement one domain deeply before adding all domains.
 Recommended first vertical: professional/office + ED E/M, because it gives reusable document extraction and validation infrastructure.
 
 Dental should remain separate because CDT is ADA-owned/licensed.
+
+Daily licensed catalog and coverage synchronization is implemented as an opt-in
+UTC worker. Configuration, normalization adapter contracts, reference-date gates,
+and current live connectivity limitations are documented in [Policy sync](docs/POLICY_SYNC.md).

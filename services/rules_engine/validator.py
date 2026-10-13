@@ -45,8 +45,9 @@ class DeterministicValidationPipeline:
         place_of_service: str,
         facts: List[Dict[str, Any]],
         candidates: List[Dict[str, Any]],
+        reference_findings: Optional[List[ValidationFindingDto]] = None,
     ) -> ValidationPipelineResult:
-        findings: List[ValidationFindingDto] = []
+        findings: List[ValidationFindingDto] = list(reference_findings or [])
         all_candidate_codes = [c.get("code") for c in candidates if c.get("code")]
         from services.coding_engine.providers.icd10 import MockICD10CodeProvider
         from services.coding_engine.providers.cpt import MockProcedureCodeProvider

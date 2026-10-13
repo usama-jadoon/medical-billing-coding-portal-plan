@@ -273,3 +273,6 @@ class ValidationFinding(Base):
 
 # Alias Case to Encounter for single-user case terminology
 Case = Encounter
+
+# Register operational reference tables with the shared metadata.
+from .references import MedicalCodeCatalog, CoveragePolicyReference, CatalogSyncRun, AuditLog
