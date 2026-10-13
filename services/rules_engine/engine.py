@@ -4,6 +4,12 @@ from services.rules_engine.rulesets.emergency import EDPlaceOfServiceRule, EDMed
 from services.rules_engine.rulesets.professional import OfficePlaceOfServiceRule
 from services.rules_engine.rulesets.ncci import NCCIMutuallyExclusiveRule
 from services.rules_engine.rulesets.modifiers import Modifier25RequirementRule
+from services.rules_engine.rulesets.behavioral_health_rules import (
+    BHPsychotherapyTimeRule,
+    BHAddOnPrerequisiteRule,
+    BHTelehealthCompletionRule,
+)
+from services.rules_engine.rulesets.dme_rules import DMEMACModifierRule, DMECMNRule
 
 
 class RuleEngine:
@@ -14,6 +20,11 @@ class RuleEngine:
             OfficePlaceOfServiceRule(),
             NCCIMutuallyExclusiveRule(),
             Modifier25RequirementRule(),
+            BHPsychotherapyTimeRule(),
+            BHAddOnPrerequisiteRule(),
+            BHTelehealthCompletionRule(),
+            DMEMACModifierRule(),
+            DMECMNRule(),
         ]
 
     def validate(
