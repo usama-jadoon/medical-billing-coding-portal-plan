@@ -174,7 +174,7 @@ async def readiness_check():
 
 @app.get("/api/system/capabilities", dependencies=[Depends(get_current_user)])
 async def capabilities():
-    return {"mode": "synthetic-development", "supported_domains": ["emergency_department", "professional_office"],
+    return {"mode": "synthetic-development", "supported_domains": ["emergency_department", "professional_office", "behavioral_health", "dme"],
             "storage": settings.STORAGE_PROVIDER, "ocr": settings.OCR_PROVIDER,
             "queue": settings.QUEUE_BACKEND, "catalog": "sample-catalog-1", "ruleset": "demo-1",
             "owner_restricted": bool(settings.OWNER_EMAIL), "mfa_configured": bool(settings.OWNER_TOTP_SECRET),

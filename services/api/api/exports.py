@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from services.api.db.session import get_db
-from services.api.db.models import Encounter, CodeCandidate, Review, AuditEvent, User
+from services.api.db.models import Encounter, CodeCandidate, Review, AuditEvent, User, CaseSnapshot, Document
 from services.api.security.tenant import get_current_tenant
 from services.api.security.tenant import get_fresh_user
 from services.api.utils.logging import audit_logger
@@ -73,11 +73,17 @@ async def export_collaboratemd(
         "is_facility": encounter.coding_domain == "emergency_department",
         "cms1500_lines": [{"dos": date.fromisoformat(encounter.service_date),
                            "pos": encounter.place_of_service, "cpt": c.code,
+                           'mod1': c.modifiers_json[0] if c.modifiers_json else '',
+                           'mod2': c.modifiers_json[1] if len(c.modifiers_json) > 1 else '',
                            "justification": evidence(c)}
                           for c in approved if c.code_system in {"CPT", "HCPCS"}],
         "diagnoses": [{"code": c.code, "version": c.code_version, "evidence": evidence(c)}
                       for c in approved if c.code_system == "ICD-10-CM"],
     }
+    snapshot = await db.get(CaseSnapshot, encounter.active_snapshot_id)
+    source = await db.get(Document, snapshot.source_document_version_id)
+    payload.update(source_sha256=source.sha256, provenance=snapshot.provenance_json,
+                   approved_code_versions={c.id: c.code_version for c in approved})
     split = await get_reviewed_split(db, encounter) if payload['is_facility'] else None
     if split:
         payload.update(cms1500_lines=split['cms1500_lines'], ub04_lines=split['ub04_lines'],
@@ -111,7 +117,8 @@ async def export_collaboratemd(
         headers={"Content-Disposition": f'attachment; filename="CollaborateMD_Encounter_{encounter.id}.xlsx"',
                  "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
                  "Content-Length": str(stream.getbuffer().nbytes),
-                 "Access-Control-Expose-Headers": "Content-Disposition"})
+                 'X-Workbook-SHA256': digest,
+                 "Access-Control-Expose-Headers": "Content-Disposition, X-Workbook-SHA256"})
 
 
 @router.get("/encounter/{encounter_id}/json")
@@ -149,6 +156,7 @@ async def export_json(
                 "code_version": c.code_version,
                 "status": c.status,
                 "rationale": c.rationale,
+                'modifiers': c.modifiers_json,
                 "evidence_snippets": [ev.quoted_text for ev in c.supporting_evidence],
                 "rules": [
                     {"rule_id": r.rule_id, "status": r.status, "message": r.message}

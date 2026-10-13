@@ -8,6 +8,7 @@ export type CodingDomain =
   | 'radiology'
   | 'pathology_laboratory'
   | 'behavioral_health'
+  | 'dme'
   | 'dental';
 
 export type EncounterStatus =
@@ -104,6 +105,7 @@ export interface CodeCandidateItem {
   status: 'candidate' | 'approved' | 'rejected' | 'modified';
   rationale: string;
   human_review_required: boolean;
+  proposed_modifiers?: string[];
   supporting_evidence: EvidenceItem[];
   rule_results: RuleResultItem[];
 }
@@ -117,6 +119,7 @@ export interface ReviewItem {
 }
 
 export interface EncounterDetail {
+  specialty_status?: { status: 'Available' | 'Unavailable'; errors: string[]; codes: string[]; modifiers: string[]; place_of_service?: string; warnings?: string[] } | null;
   version: number;
   snapshot_id?: string | null;
   id: string;

@@ -51,6 +51,17 @@ class DeterministicValidationPipeline:
         from services.coding_engine.providers.icd10 import MockICD10CodeProvider
         from services.coding_engine.providers.cpt import MockProcedureCodeProvider
         catalogs = {"ICD-10-CM": MockICD10CodeProvider.MOCK_CATALOG, "CPT": MockProcedureCodeProvider.MOCK_CATALOG}
+        if domain in {'behavioral_health', 'dme'}:
+            from services.coding_engine.references.behavioral_health_catalog import BEHAVIORAL_HEALTH_CATALOG, DME_CATALOG
+            from services.coding_engine.specialty import assess_specialty
+            assessment = assess_specialty(domain, facts, service_date, place_of_service)
+            catalogs = {'CPT': BEHAVIORAL_HEALTH_CATALOG, 'HCPCS': DME_CATALOG}
+            for message in assessment['errors']:
+                findings.append(ValidationFindingDto(stage='4_documentation', severity='BLOCK', rule_id='SPECIALTY-UNAVAILABLE', message=message))
+            if domain == 'behavioral_health':
+                from services.rules_engine.rulesets.behavioral_health_rules import validate_behavioral_selection
+                for message in validate_behavioral_selection(all_candidate_codes):
+                    findings.append(ValidationFindingDto(stage='5_relationships', severity='BLOCK', rule_id='BH-ADDON-PREREQUISITE', message=message))
 
         # ==========================================
         # STAGE 1: CATALOG CHECK
@@ -102,6 +113,10 @@ class DeterministicValidationPipeline:
                 entry = next((item for item in catalogs.get(candidate.get('code_system'), []) if item['code'] == candidate.get('code')), None)
                 if entry and parsed_date < date.fromisoformat(entry['effective_start']):
                     findings.append(ValidationFindingDto(stage="2_effective_date", severity="BLOCK", rule_id="RULE-DATE-ACTIVE", message="Candidate predates the configured development catalog entry.", candidate_code=candidate.get('code')))
+                if entry and entry.get('effective_end') and parsed_date > date.fromisoformat(entry['effective_end']):
+                    findings.append(ValidationFindingDto(stage='2_effective_date', severity='BLOCK', rule_id='SPECIALTY-CATALOG-EXPIRED', message='Loaded catalog is unavailable for this date.', candidate_code=candidate.get('code')))
+                if entry and entry.get('code_version') and candidate.get('code_version') != entry['code_version']:
+                    findings.append(ValidationFindingDto(stage='1_catalog', severity='BLOCK', rule_id='SPECIALTY-CATALOG-RELEASE', message='Candidate release does not match the loaded dated catalog.', candidate_code=candidate.get('code')))
             if year < 2015:
                 findings.append(ValidationFindingDto(
                     stage="2_effective_date",

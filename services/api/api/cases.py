@@ -95,7 +95,7 @@ async def upload_case_document(case_id: str, file: UploadFile = File(...),
 class CreateCaseRequest(BaseModel):
     patient_reference: str = Field(..., min_length=1, max_length=255, description="Pseudonymous patient reference / MRN")
     service_date: date = Field(..., description="Date of Service (YYYY-MM-DD)")
-    coding_domain: Literal["emergency_department", "professional_office"] = "emergency_department"
+    coding_domain: Literal["emergency_department", "professional_office", "behavioral_health", "dme"] = "emergency_department"
     place_of_service: str = Field(default="23", description="23=ED, 11=Office")
 
     @field_validator("patient_reference")
@@ -111,6 +111,7 @@ class CaseDecisionRequest(BaseModel):
     notes: str = Field(default="", description="Owner-reviewer rationale")
     approved_candidate_ids: List[str] = Field(default_factory=list)
     version: int = Field(..., ge=1, description="Current case version from the review package")
+    accepted_modifiers: Dict[str, List[str]] = Field(default_factory=dict)
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -123,7 +124,7 @@ async def create_case(
     require_roles([Roles.OWNER, Roles.ADMIN, Roles.CODER, Roles.REVIEWER])(current_user)
     org_id = current_user.organization_id
 
-    if req.place_of_service != {"emergency_department": "23", "professional_office": "11"}[req.coding_domain]:
+    if req.place_of_service not in {'emergency_department': {'23'}, 'professional_office': {'11'}, 'behavioral_health': {'11', '02', '10'}, 'dme': {'12'}}[req.coding_domain]:
         raise HTTPException(422, "Place of service must match the selected development profile.")
 
     # 1. Resolve or create pseudonymous patient reference
@@ -322,6 +323,12 @@ async def get_case_review(
     findings_stmt = select(ValidationFinding).where(ValidationFinding.case_id == case_id, ValidationFinding.snapshot_id == case.active_snapshot_id)
     findings_res = await db.execute(findings_stmt)
     findings = findings_res.scalars().all()
+    from services.coding_engine.specialty import assess_specialty
+    specialty_status = assess_specialty(case.coding_domain,
+        [{'fact_type': f.fact_type, 'value': f.value_json, 'evidence': {'id': f.evidence.id, 'quoted_text': f.evidence.quoted_text} if f.evidence else None}
+         for f in case.clinical_facts if f.snapshot_id == case.active_snapshot_id], case.service_date, case.place_of_service)
+    if specialty_status:
+        specialty_status.pop('evidence', None)
 
     return {
         "id": case.id,
@@ -333,6 +340,7 @@ async def get_case_review(
         "version": case.version,
         "snapshot_id": case.active_snapshot_id,
         "provenance": (await db.get(CaseSnapshot, case.active_snapshot_id)).provenance_json if case.active_snapshot_id else None,
+        "specialty_status": specialty_status,
         "created_at": case.created_at.isoformat(),
         "documents": [
             {
@@ -388,6 +396,7 @@ async def get_case_review(
                 "status": c.status,
                 "rationale": c.rationale,
                 "human_review_required": c.human_review_required,
+                "proposed_modifiers": c.modifiers_json,
                 "supporting_evidence": [
                     {
                         "id": ev.id,
@@ -478,7 +487,7 @@ async def submit_case_decision(
 
     # Revalidate the selected snapshot; excluded proposals do not become approved.
     if req.decision == "accept":
-        await validate_selection(db, case, req.approved_candidate_ids)
+        await validate_selection(db, case, req.approved_candidate_ids, req.accepted_modifiers)
 
     # State transition check
     target_state = CaseState.APPROVED if req.decision == "accept" else (
@@ -543,7 +552,7 @@ async def submit_case_decision(
         event_type=f"case_decision_{req.decision}",
         entity_type="case",
         entity_id=case.id,
-        metadata_json={"decision": req.decision, "approved_candidates": req.approved_candidate_ids},
+        metadata_json={"decision": req.decision, "approved_candidates": req.approved_candidate_ids, 'accepted_modifiers': req.accepted_modifiers},
     )
     db.add(audit)
     await db.commit()
@@ -586,7 +595,7 @@ async def export_case_manifest(
     snapshot, candidates = await validate_export(db, case)
 
     approved_codes = [
-        {"code": c.code, "system": c.code_system, "version": c.code_version}
+        {"code": c.code, "system": c.code_system, "version": c.code_version, 'modifiers': c.modifiers_json}
         for c in candidates
     ]
     split_billing = await get_reviewed_split(db, case) if case.coding_domain == 'emergency_department' else None

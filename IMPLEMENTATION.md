@@ -4,7 +4,7 @@ This repository implements a runnable development slice of the attached technica
 
 ## Implemented
 
-- Next.js review application and FastAPI API with ED and Professional / Office case profiles.
+- Next.js review application and FastAPI API with ED, Professional / Office, and bounded v0.2 Behavioral Health/DME development profiles. See [V02_IMPLEMENTATION.md](V02_IMPLEMENTATION.md) for exact field contracts, policy limits and modifier migration.
 - Owner setup, named-owner restriction (`OWNER_EMAIL`), password login, optional authenticator MFA (`OWNER_TOTP_SECRET`), 30-minute sessions, and five-minute sign-in freshness for decisions and exports.
 - Strict date/domain inputs and server-side access checks. Legacy encounter routes remain available for compatibility.
 - Bounded uploads, extension/MIME/signature agreement, UTF-8 text validation, source SHA-256 hashes, opaque storage keys, and immutable local object writes.

@@ -49,13 +49,16 @@ async def run_encounter_pipeline(encounter_id: str, document_id: str, db: AsyncS
             return {"status": "success", "encounter_id": encounter.id, "duplicate": True}
 
     # A new attempt is isolated; earlier facts and decisions remain queryable.
+    specialty = encounter.coding_domain in {'behavioral_health', 'dme'}
+    catalog_version = 'specialty-catalog-2026-v1' if specialty else 'sample-catalog-1'
+    ruleset_version = 'specialty-demo-2' if specialty else 'demo-1'
     snapshot = CaseSnapshot(
         case_id=encounter.id, source_document_version_id=document.id,
         service_date=encounter.service_date, domain_profile=encounter.coding_domain,
-        code_system_release=CodeSetVersionProvider.resolve_version("ICD-10-CM", encounter.service_date),
-        ruleset_version="demo-1",
-        provenance_json={"catalog": "sample-catalog-1", "ruleset": "demo-1", "extractor": "deterministic-1", "model": "none", "prompt": "none", "mode": "synthetic-development"},
-        snapshot_hash=hashlib.sha256(f"{encounter.id}:{document.sha256}:{encounter.service_date}:demo-1".encode()).hexdigest(),
+        code_system_release=CodeSetVersionProvider.resolve_version('HCPCS' if encounter.coding_domain == 'dme' else 'CPT' if specialty else 'ICD-10-CM', encounter.service_date),
+        ruleset_version=ruleset_version,
+        provenance_json={"catalog": catalog_version, "ruleset": ruleset_version, "extractor": "specialty-fields-2" if specialty else "deterministic-1", "model": "none", "prompt": "none", "mode": "synthetic-development"},
+        snapshot_hash=hashlib.sha256(f"{encounter.id}:{document.sha256}:{encounter.service_date}:{ruleset_version}:{catalog_version}".encode()).hexdigest(),
     )
     db.add(snapshot)
     await db.flush()
@@ -196,6 +199,7 @@ async def run_encounter_pipeline(encounter_id: str, document_id: str, db: AsyncS
             code_version=cand["code_version"],
             status="candidate",
             rationale=cand["rationale"],
+            modifiers_json=cand.get('proposed_modifiers', []),
             human_review_required=cand["human_review_required"],
         )
         db.add(db_candidate)

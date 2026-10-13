@@ -1,16 +1,29 @@
-"""Development catalog for behavioral-health procedure codes.
+"""Loaded, bounded 2026 development catalog; no proprietary CPT descriptors."""
+from datetime import date
 
-Reuses the deterministic time bands from the rules layer (the dependency runs
-coding -> rules). Adds paraphrased development labels tagged [MOCK].
+CATALOG_VERSION = 'specialty-catalog-2026-v1'
+BEHAVIORAL_HEALTH_CATALOG = [
+    {'code': code, 'code_system': 'CPT', 'effective_start': '2026-01-01', 'effective_end': '2026-12-31',
+     'code_version': 'CY2026'} for code in ('90832', '90834', '90837', '90833', '90836', '90838', '90791', '90792', '99213', '99214')
+]
+DME_CATALOG = [
+    {'code': code, 'code_system': 'HCPCS', 'equipment_name': name,
+     'effective_start': '2026-01-01', 'effective_end': '2026-12-31', 'code_version': 'CY2026',
+     'local_cmn_required': cmn}
+    for code, name, cmn in [('E0601', 'CPAP', True), ('E0260', 'semi-electric hospital bed with mattress', True)]
+]
 
-CPT is a registered trademark of the American Medical Association;
-proprietary AMA descriptors are not stored or redistributed here (same
-convention as the mock CPT provider).
 
-This catalog is NOT exposed as an activated profile. Behavioral health stays
-unavailable in the UI until its end-to-end development workflow passes with a
-licensed catalog.
-"""
+def active_entry(code, system, service_date):
+    try:
+        when = date.fromisoformat(service_date)
+    except (TypeError, ValueError):
+        return None
+    return next((entry for entry in BEHAVIORAL_HEALTH_CATALOG + DME_CATALOG
+                 if entry['code'] == code and entry['code_system'] == system
+                 and date.fromisoformat(entry['effective_start']) <= when <= date.fromisoformat(entry['effective_end'])), None)
+
+# Preserve upstream catalog reference helpers without reversing dependency flow.
 from services.rules_engine.rulesets.behavioral_health_rules import (
     PSYCHOTHERAPY_TIME_BANDS,
     PSYCHOTHERAPY_ADD_ONS,
@@ -49,3 +62,5 @@ __all__ = [
     "is_add_on_code",
     "band_for_code",
 ]
+
+__all__ += ['CATALOG_VERSION', 'BEHAVIORAL_HEALTH_CATALOG', 'DME_CATALOG', 'active_entry']

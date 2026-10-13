@@ -2,6 +2,8 @@
 from datetime import date
 from io import BytesIO
 import math
+import hashlib
+import json
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from openpyxl import Workbook
@@ -10,6 +12,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.writer.excel import ExcelWriter
 from openpyxl.worksheet._writer import WorksheetWriter
+from openpyxl.packaging.custom import StringProperty
 
 
 class _InMemoryExcelWriter(ExcelWriter):
@@ -28,14 +31,11 @@ class _InMemoryExcelWriter(ExcelWriter):
 
 
 PROFESSIONAL_HEADERS = [
-    "Line #", "DOS", "POS", "Primary DX", "Secondary DXs",
-    "CPT/HCPCS", "Mod 1", "Mod 2", "DX Pointer", "Units",
-    "Charge", "Rationale",
+    "Line #", "DOS", "POS", "Primary DX", "Secondary DXs", "CPT/HCPCS", "Mod 1", "Mod 2",
+    "DX Pointer", "Units", "Charge", "Rationale",
 ]
 FACILITY_HEADERS = [
-    "Line #", "DOS", "Rev Code", "Rev Description",
-    "HCPCS/CPT", "Modifier", "Units",
-    "Primary DX", "Pointer", "Justification",
+    "Line #", "DOS", "Rev Code", "Rev Description", "HCPCS/CPT", "Modifier", "Units", "Primary DX", "Pointer", "Justification",
 ]
 
 
@@ -126,10 +126,9 @@ def create_collaboratemd_workbook(encounter_data: dict) -> BytesIO:
                 ("Claim fields use explicit billing review selections." if encounter_data.get('billing_review_id') else
                  "Blank claim fields need review; diagnosis order and pointers are not assigned."))
     lines = encounter_data.get("cms1500_lines", [])
-    # "Charge" has no key: charges are never invented, the reviewer fills them.
-    # "Rationale" carries the evidence/justification text.
-    _rows(ws, lines, ["dos", "pos", "primary_dx", "secondary_dx", "cpt", "mod1", "mod2",
-                      "pointer", "units", "charge", "justification"])
+    _rows(ws, lines, ["dos", "pos", "primary_dx", "secondary_dx", "cpt", "mod1", "mod2", "pointer", "units", "charge", "justification"])
+    for row in range(7, 7 + len(lines)):
+        ws.cell(row, 11).number_format = '"$"#,##0.00'
     table_end = 6 + len(lines)
     diagnosis_header = max(8, table_end + 3)
     _header(ws, diagnosis_header, ["Approved diagnosis", "Version", "Evidence (unsequenced)"], "1E3A8A")
@@ -144,6 +143,14 @@ def create_collaboratemd_workbook(encounter_data: dict) -> BytesIO:
                           "Facility lines unavailable: this case has no separately reviewed revenue codes or facility charges. No professional lines were copied.")
         _rows(facility, facility_lines, ["dos", "rev_code", "rev_desc", "cpt", "mod", "units", "primary_dx", "pointer", "justification"])
         _fit(facility, max(6, 6 + len(facility_lines)))
+    canonical = json.dumps(encounter_data, sort_keys=True, separators=(',', ':'), default=lambda value: value.isoformat() if isinstance(value, date) else str(value))
+    stamp = hashlib.sha256(canonical.encode('utf-8')).hexdigest()
+    wb.custom_doc_props.append(StringProperty(name='RemitVistaManifestJSON', value=canonical))
+    wb.custom_doc_props.append(StringProperty(name='RemitVistaManifestSHA256', value=stamp))
+    for sheet in wb.worksheets:
+        _write(sheet.cell(5, 1), 'Manifest SHA-256: ' + stamp)
+        sheet.merge_cells(start_row=5, start_column=1, end_row=5, end_column=sheet.max_column)
+        sheet.row_dimensions[5].height = 22
     output = BytesIO()
     with ZipFile(output, "w", ZIP_DEFLATED, allowZip64=True) as archive:
         _InMemoryExcelWriter(wb, archive).write_data()

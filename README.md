@@ -4,6 +4,8 @@ The runnable evidence-first development implementation, setup commands, verifica
 
 The consolidated product roadmap, specialty coverage gaps, and business assumptions are documented in [MASTER_PLAN.md](MASTER_PLAN.md).
 
+Bounded Behavioral Health/DME profiles, modifier acceptance, migration and worksheet manifest details are documented in [V02_IMPLEMENTATION.md](V02_IMPLEMENTATION.md).
+
 Start the API on port 8000 and the web app on port 3000. Create a case, upload a searchable PDF or synthetic text, inspect evidence, select codes, approve, and export. Development catalogs and local storage are active; production processing is disabled.
 
 ## Goal

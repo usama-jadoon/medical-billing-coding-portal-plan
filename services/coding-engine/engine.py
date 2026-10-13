@@ -35,6 +35,9 @@ class CodingEngine:
         facts: List[Dict[str, Any]],
     ) -> List[Dict[str, Any]]:
         raw_candidates: List[CodeCandidateDto] = []
+        if domain in {'behavioral_health', 'dme'}:
+            from services.coding_engine.specialty import specialty_candidates
+            return specialty_candidates(domain, facts, service_date, place_of_service)
         fact_evidence_map: Dict[str, List[Dict[str, Any]]] = {}
 
         # 1. Search for diagnoses from diagnosis / symptom facts

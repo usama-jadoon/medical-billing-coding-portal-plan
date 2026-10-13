@@ -1,0 +1,7 @@
+SYNTHETIC DOCUMENT - NO REAL PHI
+Date of Service: 2026-09-22
+Service kind: PSYCHOTHERAPY
+Patient present: yes
+Telehealth: no
+Separate medical E/M: no
+Signed by: Synthetic clinician
