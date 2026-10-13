@@ -16,7 +16,7 @@ Time guidance: [CMS article A57520](https://www.cms.gov/medicare-coverage-databa
 
 The loaded catalog supports exact CPAP equipment (E0601) and a specified semi-electric hospital bed with mattress (E0260). Generic hospital bed/BiPAP/wheelchair descriptions do not default to a specific code. Order type is explicit: purchase proposes NU and rental proposes RR. Unspecified status remains unavailable. CPAP additionally requires a documented sleep-study flag before proposing KX. Proposed modifiers reach export only after explicit reviewer acceptance.
 
-The requested high-value CMN gate is implemented as a **local development policy**, not a statement of current Medicare CMN form requirements. A generic hospital-bed record can show both missing specification and `CMN required before claim generation.` A signed-CMN flag is a documented assertion for human verification; this application does not independently authenticate an external CMN or establish complete medical necessity.
+The requested high-value CMN gate covers both CPAP and the specified bed and is implemented as a **local development policy**, not a statement of current Medicare CMN form requirements. A generic hospital-bed record can show both missing specification and `CMN required before claim generation.` A signed-CMN flag is a documented assertion for human verification; this application does not independently authenticate an external CMN or establish complete medical necessity.
 
 CMS discontinued CMN/DIF forms for dates of service on/after January 1, 2023: [CMS notice](https://www.cms.gov/newsroom/news-alert/cms-discontinuing-use-certificates-medical-necessity-durable-medical-equipment-information-forms). PAP KX criteria involve the related coverage policy, not only a sleep-study Boolean: [CMS policy A52467](https://www.cms.gov/medicare-coverage-database/view/article.aspx?articleid=52467). The bounded CPAP proposal is labeled development-only; initial/continued coverage, rental month, SWO/WOPD, delivery and all applicable payer documentation still require policy expansion and qualified review.
 
@@ -45,14 +45,17 @@ DME example:
 ```text
 Equipment: CPAP
 Order type: RENTAL
+Signed CMN on file: yes
 Sleep study criteria met: yes
 ```
 
-The high-value example additionally uses `Signed CMN on file: yes`. Optional `Ordering physician NPI: 1234567890` is retained only as documented data with a ten-digit format check; it is not verified against NPPES.
+Both bounded equipment examples require `Signed CMN on file: yes`. Optional `Ordering physician NPI: 1234567890` is retained only as documented data with a ten-digit format check; it is not verified against NPPES.
 
 Synthetic fixtures are provided in `tests/fixtures/`. This is a bounded field contract, not a general-purpose clinical natural-language parser. Unrecognized notes remain unavailable until documentation is supplied in a supported form.
 
 ## Approval and export
+
+The existing upstream RuleEngine helper interfaces and acceptance tests are retained. Their context-based helpers do not bypass the active profile's evidence, dated-catalog, modality/location or reviewer gates. The API uses the strict, independently re-extracted specialty assessment before any approval/export.
 
 Migration `004_specialty_modifiers` adds candidate modifier storage without rewriting earlier records. Run `.venv\Scripts\python.exe -m scripts.migrate` before starting the updated API; the migration script backs up a local SQLite database. Historical ED/office bundles remain valid under their existing versions. New specialties pin `specialty-catalog-2026-v1` and `specialty-demo-2`.
 

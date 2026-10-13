@@ -19,6 +19,7 @@ Signed by: Synthetic Reviewer
 DME = '''Date of Service: 2026-09-22
 Equipment: CPAP
 Order type: RENTAL
+Signed CMN on file: yes
 Sleep study criteria met: yes
 Signed by: Synthetic Reviewer
 '''
