@@ -33,6 +33,7 @@ pnpm-debug.log*
 *.key
 
 # Database and Storage
+/storage/
 *.sqlite
 *.sqlite3
 *.db

@@ -64,3 +64,16 @@ def test_storage_path_traversal_defense():
 
     with pytest.raises(ValueError, match="Path traversal attack detected"):
         provider._resolve_path("org1/../../../secret.txt")
+
+
+@pytest.mark.asyncio
+async def test_storage_preserves_existing_source_version(tmp_path):
+    provider = LocalStorageProvider(str(tmp_path))
+    key = 'synthetic-org/document-v1.txt'
+    assert await provider.save_file(key, b'original source', 'text/plain') == key
+    with pytest.raises(FileExistsError):
+        await provider.save_file(key, b'replacement source', 'text/plain')
+    assert await provider.get_file(key) == b'original source'
+    assert await provider.exists(key)
+    assert await provider.delete_file(key)
+    assert not await provider.exists(key)
