@@ -16,6 +16,23 @@ class VerificationUnavailable(RuntimeError):
     pass
 
 
+class ReferenceHTTPError(VerificationUnavailable):
+    """Safe operational metadata; never expose upstream bodies, URLs or keys."""
+    def __init__(self, response):
+        self.http_status = response.status_code
+        country_blocked = (
+            response.status_code == 403
+            and response.request.url.host == 'api.coverage.cms.gov'
+            and response.headers.get('server', '').lower() == 'cloudfront'
+            and 'configured to block access from your country' in response.text[:8192].lower()
+        )
+        self.reason_code = 'CMS_COUNTRY_RESTRICTED' if country_blocked else f'HTTP_{self.http_status}'
+        message = ('CMS access is restricted from this country. Contact the CMS Coverage API helpdesk '
+                   'or use a deployment permitted by CMS; prior references retained.' if country_blocked else
+                   f'Reference provider returned HTTP {self.http_status}; prior references retained.')
+        super().__init__(message)
+
+
 class CodeStatus(BaseModel):
     model_config = ConfigDict(extra='forbid')
     code: str = Field(min_length=1, max_length=30)
@@ -59,7 +76,9 @@ class RestClient:
                     await asyncio.sleep(0.25 * (2 ** attempt))
                     continue
                 raise VerificationUnavailable('Reference provider transport unavailable.') from None
-            except (httpx.HTTPStatusError, ValueError):
+            except httpx.HTTPStatusError as exc:
+                raise ReferenceHTTPError(exc.response) from None
+            except ValueError:
                 raise VerificationUnavailable('Reference provider rejected request or returned invalid JSON.') from None
 
 

@@ -124,3 +124,20 @@ October 14 verification observed both HTTP 200 and subsequent HTTP 403 responses
 from the official service. The most recent refresh failed and was audited; no
 live completion is claimed. The configured Windows task retries failures up to
 three times at five-minute intervals. See FINAL_DELIVERY.md for setup and limits.
+# Country restrictions and local operation
+
+On October 14, 2026, the public endpoint returned an explicit CloudFront country
+restriction. `CMS_COUNTRY_RESTRICTED` and HTTP 403 are exposed in safe worker
+errors, audit metadata and the authenticated `/api/references/cms-status` response.
+Response bodies, URLs, tokens and credentials are not included in these errors.
+The References page distinguishes the loaded quarterly package from optional live
+policy metadata; it also shows cached-snapshot staleness and the last refresh result.
+Snapshot and attempt status use the configured contractor/state scope.
+
+The selected local workflow uses verified quarterly HCPCS/PTP/MUE ZIP packages as
+the primary public coding-reference source. Live policy metadata is optional and
+does not establish code validity or medical necessity. A metadata refresh failure
+does not delete the quarterly package or publish a false successful snapshot.
+For restricted live access, consult the [official CMS helpdesk](https://api.coverage.cms.gov/docs/)
+about permitted deployment/access. No proxy or alternate endpoint is enabled to
+work around the restriction.

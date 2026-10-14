@@ -26,7 +26,7 @@ The current implementation is a development web application served locally by Ne
 | Session controls | Named-owner restriction available, optional TOTP, bounded sessions and fresh sign-in for approval/export |
 | Production mode | Intentionally disabled while development catalogs and controls are active |
 
-The latest completed verification included 153 backend tests, web lint/build, and a synthetic browser workflow from upload through dual-tab Excel download. This establishes development behavior, not clinical coding accuracy, payer acceptance or production readiness. Setup and implementation detail are in [IMPLEMENTATION.md](IMPLEMENTATION.md).
+The latest completed verification included 158 backend tests, web lint/build, and a synthetic browser workflow from upload through dual-tab Excel download. This establishes development behavior, not clinical coding accuracy, payer acceptance or production readiness. Setup and implementation detail are in [IMPLEMENTATION.md](IMPLEMENTATION.md).
 
 ## Workflow
 
