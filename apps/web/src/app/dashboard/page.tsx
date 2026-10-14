@@ -91,7 +91,7 @@ export default function DashboardPage() {
             <CheckCircle2 className="h-4 w-4 text-emerald-600" />
           </div>
           <div className="mt-2 text-2xl font-extrabold text-emerald-900">{approvedCount}</div>
-          <div className="text-[11px] text-emerald-700 mt-1">Verified &amp; export ready</div>
+          <div className="text-[11px] text-emerald-700 mt-1">Approval recorded; exports revalidated</div>
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">

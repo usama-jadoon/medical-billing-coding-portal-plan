@@ -5,6 +5,12 @@ from pydantic import Field
 
 class Settings(BaseSettings):
     POLICY_SYNC_ENABLED: bool = False
+    CMS_POLICY_SYNC_ENABLED: bool = False
+    CMS_REFERENCE_DB: str = ''
+    TESSERACT_CMD: str = 'tesseract'
+    OCR_MAX_PAGES: int = 50
+    OCR_MAX_PIXELS: int = 20000000
+    OCR_TIMEOUT_SECONDS: int = 60
     POLICY_SYNC_CRON: str = '0 0 * * *'
     POLICY_CACHE_TTL_HOURS: int = 24
     MCA_CODE_API_PROVIDER: str = 'findacode'

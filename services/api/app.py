@@ -174,12 +174,25 @@ async def readiness_check():
 
 @app.get("/api/system/capabilities", dependencies=[Depends(get_current_user)])
 async def capabilities():
+    from services.ocr.tesseract import available
+    from services.coding_engine.references.cms_store import CMSReferenceStore
+    reference_status = {'status': 'not_configured'}
+    if settings.CMS_REFERENCE_DB:
+        try:
+            reference_status = {'status': 'available', **CMSReferenceStore(settings.CMS_REFERENCE_DB).metadata()}
+        except ValueError:
+            reference_status = {'status': 'unavailable'}
     return {"mode": "synthetic-development", "supported_domains": ["emergency_department", "professional_office", "behavioral_health", "dme"],
             "storage": settings.STORAGE_PROVIDER, "ocr": settings.OCR_PROVIDER,
             "queue": settings.QUEUE_BACKEND, "catalog": "sample-catalog-1", "ruleset": "demo-1",
             "owner_restricted": bool(settings.OWNER_EMAIL), "mfa_configured": bool(settings.OWNER_TOTP_SECRET),
             "session_minutes": settings.ACCESS_TOKEN_EXPIRE_MINUTES, "step_up_seconds": settings.STEP_UP_MAX_AGE_SECONDS,
-            "production_enabled": False, "image_ocr_available": False}
+            "production_enabled": False, "image_ocr_available": available(),
+            'cms_references': reference_status,
+            'licensed_sync_enabled': settings.POLICY_SYNC_ENABLED,
+            'cms_policy_sync_enabled': settings.CMS_POLICY_SYNC_ENABLED,
+            'unavailable_domains': {'inpatient': 'Inpatient policy/catalog validation is not activated.',
+                                    'dental': 'Licensed CDT catalog and dental claim workflow are required.'}}
 
 
 # Include Routers

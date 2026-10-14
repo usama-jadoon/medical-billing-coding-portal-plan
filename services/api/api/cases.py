@@ -30,6 +30,37 @@ from services.api.workflow.split_billing import resolve_split, get_reviewed_spli
 router = APIRouter(prefix="/cases", tags=["cases"])
 
 
+class ReanalysisRequest(BaseModel):
+    version: int = Field(strict=True, ge=1)
+
+
+@router.post('/{case_id}/reanalyze', status_code=201)
+async def reanalyze_source(case_id: str, request: ReanalysisRequest, db: AsyncSession = Depends(get_db),
+                           user: User = Depends(get_current_user)):
+    import io
+    import hashlib
+    from starlette.datastructures import Headers
+    from services.api.storage import get_storage
+    from services.api.api.documents import upload_document
+    require_roles([Roles.OWNER, Roles.ADMIN, Roles.CODER, Roles.REVIEWER])(user)
+    case = await db.scalar(select(Encounter).where(Encounter.id == case_id, Encounter.organization_id == user.organization_id))
+    if not case:
+        raise HTTPException(404, 'Case not found.')
+    if request.version != case.version:
+        raise HTTPException(409, 'Case changed. Reload before reanalysis.')
+    snapshot = await db.get(CaseSnapshot, case.active_snapshot_id) if case.active_snapshot_id else None
+    if not snapshot or snapshot.case_id != case.id:
+        raise HTTPException(400, 'A completed source snapshot is required for reanalysis.')
+    document = await db.get(Document, snapshot.source_document_version_id)
+    if not document or document.encounter_id != case.id:
+        raise HTTPException(400, 'Pinned source is unavailable.')
+    content = await get_storage().get_file(document.object_key)
+    if hashlib.sha256(content).hexdigest() != document.sha256:
+        raise HTTPException(400, 'Source hash mismatch; reanalysis stopped.')
+    file = UploadFile(file=io.BytesIO(content), filename=document.filename, headers=Headers({'content-type': document.mime_type}))
+    return await upload_document(case.id, file, db, user, force_reanalysis=True)
+
+
 @router.post('/detect-setting')
 async def detect_setting(file: UploadFile = File(...), user: User = Depends(get_current_user)):
     """Suggest a supported setting from source text; user confirmation is required."""
@@ -445,7 +476,7 @@ async def get_case_review(
                 "source_reference": vf.source_reference,
                 "candidate_id": vf.candidate_id,
             }
-            for vf in findings if not vf.rule_id.startswith('LIVE-CATALOG-')
+            for vf in findings if not vf.rule_id.startswith(('LIVE-CATALOG-', 'CMS-'))
         ] + [{**vf.model_dump(exclude={'candidate_code'}), 'id': f'live-{index}',
               'candidate_id': next((c.id for c in case.code_candidates
                   if c.snapshot_id == case.active_snapshot_id and c.code == vf.candidate_code), None)}

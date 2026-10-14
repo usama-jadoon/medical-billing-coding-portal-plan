@@ -7,7 +7,7 @@ import {
   BillingReviewInput, BillingSplit,
 } from './types';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
 
 function getAuthToken(): string | null {
   if (typeof window === 'undefined') return null;
@@ -112,8 +112,14 @@ export const api = {
   async getCapabilities(): Promise<{
     mode: string; storage: string; ocr: string; queue: string; catalog: string; ruleset: string;
     owner_restricted: boolean; mfa_configured: boolean; session_minutes: number; step_up_seconds: number;
+    image_ocr_available: boolean;
+    cms_references: { status: string; release?: string; counts?: Record<string, number> };
   }> {
     return request('/api/system/capabilities');
+  },
+
+  async reanalyzeEncounter(id: string, version: number): Promise<void> {
+    await request(`/api/cases/${id}/reanalyze`, { method: 'POST', body: JSON.stringify({ version }) });
   },
 
   async listEncounters(domain?: string, status?: string): Promise<EncounterSummary[]> {

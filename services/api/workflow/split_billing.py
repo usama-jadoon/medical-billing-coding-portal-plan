@@ -27,6 +27,12 @@ async def resolve_split(db, case, request):
     try:
         output = ERSplitBillingEngine().process_er_encounter(request, candidates={c.id: c for c in candidates},
             evidence=evidence, service_date=case.service_date, place_of_service=case.place_of_service)
+        from services.api.config import settings
+        if settings.CMS_REFERENCE_DB:
+            from services.coding_engine.references.cms_store import CMSReferenceStore
+            from services.rules_engine.cms_billing import validate_cms_lines
+            validate_cms_lines(CMSReferenceStore(settings.CMS_REFERENCE_DB), request.lines,
+                               {c.id: c.code for c in candidates}, case.service_date)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     approval = (await db.execute(select(Review).where(Review.encounter_id == case.id)

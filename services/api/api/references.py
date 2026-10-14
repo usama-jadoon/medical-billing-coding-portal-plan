@@ -1,7 +1,22 @@
 from fastapi import APIRouter
+from fastapi import Depends
+from sqlalchemy import select
+from services.api.db.session import get_db
+from services.api.db.models.references import CMSCoverageSnapshot
+from services.api.security.tenant import get_current_user
 from typing import List, Dict, Any
 
 router = APIRouter(prefix="/references", tags=["references"])
+
+
+@router.get('/cms-status', dependencies=[Depends(get_current_user)])
+async def cms_status(db=Depends(get_db)):
+    row = (await db.execute(select(CMSCoverageSnapshot).order_by(CMSCoverageSnapshot.completed_at.desc()).limit(1))).scalar_one_or_none()
+    if not row:
+        return {'status': 'unavailable', 'records': 0}
+    return {'status': 'available', 'last_synced_at': row.completed_at.isoformat(),
+            'records': len(row.records_json), 'scope': row.scope_json, 'sha256': row.sha256,
+            'usage': 'Reference metadata only; does not establish coverage or medical necessity.'}
 
 OFFICIAL_REFERENCES: List[Dict[str, Any]] = [
     {

@@ -14,6 +14,18 @@ class CatalogSyncRun(Base):
     manifest_json: Mapped[dict] = mapped_column(JSON, nullable=False)
 
 
+class CMSCoverageSnapshot(Base):
+    __tablename__ = 'cms_coverage_snapshots'
+    __table_args__ = (UniqueConstraint('sync_date', 'scope_sha256'),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    sync_date: Mapped[date] = mapped_column(Date)
+    scope_sha256: Mapped[str] = mapped_column(String(64))
+    scope_json: Mapped[dict] = mapped_column(JSON)
+    records_json: Mapped[list] = mapped_column(JSON)
+    sha256: Mapped[str] = mapped_column(String(64))
+    completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
 class MedicalCodeCatalog(Base):
     __tablename__ = 'medical_code_catalog'
     __table_args__ = (UniqueConstraint('sync_run_id', 'code_system', 'code', 'release', 'effective_from'),)

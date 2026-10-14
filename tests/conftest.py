@@ -14,6 +14,18 @@ from services.api.app import app
 
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
 
+
+@pytest.fixture(autouse=True)
+def isolate_local_runtime(monkeypatch, tmp_path):
+    """Tests must not use a workstation's live feeds, queue or document storage."""
+    from services.api import storage
+    monkeypatch.setattr(settings, 'CMS_REFERENCE_DB', '')
+    monkeypatch.setattr(settings, 'CMS_POLICY_SYNC_ENABLED', False)
+    monkeypatch.setattr(settings, 'POLICY_SYNC_ENABLED', False)
+    monkeypatch.setattr(settings, 'QUEUE_BACKEND', 'sync')
+    monkeypatch.setattr(settings, 'LOCAL_STORAGE_PATH', str(tmp_path / 'documents'))
+    monkeypatch.setattr(storage, '_default_storage', None)
+
 test_engine = create_async_engine(
     TEST_DB_URL,
     connect_args={"check_same_thread": False},

@@ -1,6 +1,7 @@
 """One approval policy shared by review and every export route."""
 import hashlib
 from fastapi import HTTPException
+from starlette.concurrency import run_in_threadpool
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from services.api.db.models import CaseSnapshot, ClinicalFact, CodeCandidate, Document, DocumentPage
@@ -22,6 +23,13 @@ async def validate_selection(db, case, candidate_ids, accepted_modifiers=None):
     if hashlib.sha256(await get_storage().get_file(document.object_key)).hexdigest() != document.sha256:
         raise HTTPException(400, "Approval blocked: Stored source hash does not match the document version.")
     specialty = case.coding_domain in {'behavioral_health', 'dme'}
+    from services.worker.sync.validation import cms_fingerprint
+    try:
+        current_cms = await run_in_threadpool(cms_fingerprint)
+    except ValueError:
+        raise HTTPException(400, 'Approval blocked: CMS reference package is unavailable.')
+    if snapshot.provenance_json.get('cms_reference') != current_cms:
+        raise HTTPException(400, 'Approval blocked: CMS reference package changed. Reanalyze the source and review again.')
     bundle = ('specialty-demo-2', 'specialty-catalog-2026-v1') if specialty else ('demo-1', 'sample-catalog-1')
     if (snapshot.ruleset_version, snapshot.provenance_json.get('catalog')) != bundle:
         raise HTTPException(400, "Approval blocked: Pinned policy bundle is unavailable.")

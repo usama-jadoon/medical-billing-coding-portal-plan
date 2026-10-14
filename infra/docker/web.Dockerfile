@@ -6,8 +6,10 @@ RUN pnpm install --frozen-lockfile
 COPY apps/web/src ./src
 COPY apps/web/public ./public
 COPY apps/web/next.config.ts apps/web/tsconfig.json apps/web/postcss.config.mjs ./
-ARG NEXT_PUBLIC_API_URL=http://localhost:8000
+ARG NEXT_PUBLIC_API_URL=
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ARG API_INTERNAL_URL=http://api:8000
+ENV API_INTERNAL_URL=$API_INTERNAL_URL
 RUN pnpm build
 
 FROM node:24-alpine AS runner

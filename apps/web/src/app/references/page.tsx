@@ -8,8 +8,11 @@ import { ReferenceItem } from '@/lib/types';
 export default function ReferencesPage() {
   const [references, setReferences] = useState<ReferenceItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [cmsStatus, setCmsStatus] = useState('Checking loaded CMS package…');
+
 
   useEffect(() => {
+    api.getCapabilities().then(c => setCmsStatus(c.cms_references.status === 'available' ? `Loaded CMS ${c.cms_references.release}: ${Object.entries(c.cms_references.counts || {}).map(([key, count]) => `${count.toLocaleString()} ${key}`).join(' · ')}` : 'CMS reference package is not loaded.')).catch(() => setCmsStatus('CMS reference status unavailable.'));
     api.listReferences()
       .then(setReferences)
       .catch(() => setReferences([]))
@@ -27,7 +30,7 @@ export default function ReferencesPage() {
         </div>
         <div className="flex items-center space-x-1.5 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg">
           <ShieldCheck className="h-4 w-4" />
-          <span className="font-semibold">Zero-Scraping Compliance</span>
+          <span className="font-semibold">Official source links</span>
         </div>
       </div>
 
@@ -42,6 +45,7 @@ export default function ReferencesPage() {
         </p>
       </div>
 
+      <p className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-700">{cmsStatus}</p>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {loading ? (
           <div className="col-span-2 text-center py-12 text-xs text-slate-400">

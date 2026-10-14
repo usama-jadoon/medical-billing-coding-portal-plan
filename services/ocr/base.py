@@ -14,6 +14,7 @@ class OCRPage(BaseModel):
     page_number: int
     text: str
     bounding_boxes: List[BoundingBox] = Field(default_factory=list)
+    word_spans: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class OCRResult(BaseModel):

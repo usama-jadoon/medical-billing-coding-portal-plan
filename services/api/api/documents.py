@@ -1,6 +1,7 @@
 import hashlib
 import uuid
 from pathlib import Path
+from starlette.concurrency import run_in_threadpool
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -88,6 +89,7 @@ async def upload_document(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    force_reanalysis: bool = False,
 ):
     require_roles([Roles.OWNER, Roles.ADMIN, Roles.CODER, Roles.REVIEWER])(current_user)
     org_id = current_user.organization_id
@@ -125,7 +127,12 @@ async def upload_document(
     # Compute SHA-256
     file_sha256 = hashlib.sha256(content).hexdigest()
     existing = (await db.execute(select(Document).where(Document.encounter_id == encounter.id, Document.sha256 == file_sha256))).scalars().first()
-    if existing and encounter.active_snapshot_id:
+    from services.api.db.models import CaseSnapshot
+    from services.worker.sync.validation import cms_fingerprint
+    current_snapshot = await db.get(CaseSnapshot, encounter.active_snapshot_id) if encounter.active_snapshot_id else None
+    current_reference = await run_in_threadpool(cms_fingerprint)
+    # Identical bytes still need a new analysis after the reference package changes.
+    if not force_reanalysis and existing and current_snapshot and current_snapshot.provenance_json.get('cms_reference') == current_reference:
         return {"id": existing.id, "filename": existing.filename, "sha256": existing.sha256,
                 "mime_type": existing.mime_type, "file_size_bytes": existing.file_size_bytes,
                 "pipeline_result": {"status": "success", "duplicate": True}}
