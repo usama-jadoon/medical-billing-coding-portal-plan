@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from services.api.db.models.references import CMSCoverageSnapshot, AuditLog
 from services.worker.sync.service import digest
-from services.coding_engine.providers.verification_api import VerificationUnavailable
+from services.coding_engine.providers.verification_api import VerificationUnavailable, ReferenceHTTPError
 
 
 async def refresh_cms(factory, client):
@@ -22,7 +22,7 @@ async def refresh_cms(factory, client):
             row = CMSCoverageSnapshot(sync_date=now.date(), scope_sha256=scope_hash,
                 scope_json=client.scope, records_json=records, sha256=digest(records))
             db.add(row)
-            db.add(AuditLog(event='CMS_POLICY_SYNC_COMPLETED', metadata_json={'scope': client.scope, 'records': len(records), 'sha256': row.sha256}))
+            db.add(AuditLog(event='CMS_POLICY_SYNC_COMPLETED', metadata_json={'scope': client.scope, 'scope_sha256': scope_hash, 'records': len(records), 'sha256': row.sha256}))
             await db.commit()
             return 'CMS_COMPLETED'
         except IntegrityError:
@@ -31,8 +31,13 @@ async def refresh_cms(factory, client):
             if existing:
                 return 'CMS_ALREADY_COMPLETED'
             raise VerificationUnavailable('CMS snapshot integrity failure; no completion recorded.') from None
-        except Exception:
+        except Exception as exc:
             await db.rollback()
-            db.add(AuditLog(event='CMS_POLICY_SYNC_FAILED', metadata_json={'scope': client.scope, 'reason': 'Public CMS refresh failed; previous snapshot retained.'}))
+            details = {'scope': client.scope, 'scope_sha256': scope_hash, 'reason': 'Public CMS refresh failed; previous snapshot retained.'}
+            if isinstance(exc, ReferenceHTTPError):
+                details.update(reason_code=exc.reason_code, http_status=exc.http_status)
+            db.add(AuditLog(event='CMS_POLICY_SYNC_FAILED', metadata_json=details))
             await db.commit()
+            if isinstance(exc, ReferenceHTTPError):
+                raise
             raise VerificationUnavailable('Public CMS policy refresh failed; prior snapshot retained.') from None

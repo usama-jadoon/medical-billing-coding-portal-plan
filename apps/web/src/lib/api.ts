@@ -172,6 +172,13 @@ export const api = {
     return request('/api/references');
   },
 
+  async getCMSPolicyStatus(): Promise<{
+    status: string; records: number; stale: boolean; sync_enabled: boolean;
+    last_attempt: { status: string; timestamp: string; reason_code: string | null; http_status: number | null } | null;
+  }> {
+    return request('/api/references/cms-status');
+  },
+
   async listAuditEvents(eventType?: string): Promise<AuditEventItem[]> {
     const query = eventType ? `?event_type=${encodeURIComponent(eventType)}` : '';
     return request(`/api/audit${query}`);

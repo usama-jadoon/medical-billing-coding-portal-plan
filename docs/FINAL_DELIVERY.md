@@ -78,7 +78,9 @@ clinical policy:
 
 1. Find-A-Code/AAPC licensed API endpoint/authentication documentation and keys;
    approved CPT/CDT packages and selected payer policies.
-2. Actual CollaborateMD entry-screen/template verification. The current exports
+2. Actual CollaborateMD entry-screen/template verification (the supplied third-party
+   image could not be opened). See [worksheet mapping](WORKSHEET_MAPPING.md) for
+   the completed field-list checks and exact limits. The current exports
    are manual-entry worksheets, not certified imports or claim submissions.
 3. Qualified coding review of representative cases, independent facility-level
    rules, and expansion beyond bounded profiles. Inpatient and dental stay
@@ -95,7 +97,7 @@ CMS source references:
 
 ## Verification on this workstation (October 14, 2026)
 
-- 153 backend tests passed, including real Tesseract image/PDF extraction, dated
+- 158 backend tests passed, including real Tesseract image/PDF extraction, dated
   reference boundaries, MUE aggregation, independent CMS refresh, and backup
   tamper rejection.
 - Web ESLint and the optimized Next.js build passed on the final source.
@@ -108,8 +110,14 @@ CMS source references:
 - Migration 006 applied with a local database backup; a separate document/database
   backup and restore completed. The limited-user daily task is registered for
   00:00 UTC (05:00 Pakistan time), with three five-minute retries.
-- CMS public API returned 200 during probing, then 403 on the latest refresh.
-  The latest result is a failure audit, not a completed policy snapshot.
+- PR #6 merged into main at `a7406a857bf8cd6bed5a0506b3ac700436e9c176`.
+- CMS public API returned 200 during earlier probing, then CloudFront explicitly
+  reported a country restriction on the latest refresh. The worker, audit and
+  authenticated status expose `CMS_COUNTRY_RESTRICTED` / HTTP 403 without storing
+  upstream bodies or credentials. The latest result is a failure audit, not a
+  completed policy snapshot. Per the selected local workflow, quarterly ZIPs are
+  the primary public coding-reference data; live policy metadata is optional.
+  The already loaded quarterly package remains usable within its date window.
 - Licensed live code/payer integrations and production activation remain off.
 
 The web client now uses the same-origin `/api` proxy by default, so localhost

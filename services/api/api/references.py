@@ -2,7 +2,10 @@ from fastapi import APIRouter
 from fastapi import Depends
 from sqlalchemy import select
 from services.api.db.session import get_db
-from services.api.db.models.references import CMSCoverageSnapshot
+from services.api.db.models.references import CMSCoverageSnapshot, AuditLog
+from services.api.config import settings
+from services.worker.sync.service import digest
+from datetime import datetime, timezone
 from services.api.security.tenant import get_current_user
 from typing import List, Dict, Any
 
@@ -11,11 +14,26 @@ router = APIRouter(prefix="/references", tags=["references"])
 
 @router.get('/cms-status', dependencies=[Depends(get_current_user)])
 async def cms_status(db=Depends(get_db)):
-    row = (await db.execute(select(CMSCoverageSnapshot).order_by(CMSCoverageSnapshot.completed_at.desc()).limit(1))).scalar_one_or_none()
+    scope = {key: value for key, value in {'contractor_id': settings.CMS_CONTRACTOR_ID, 'state_id': settings.CMS_STATE_ID}.items() if value is not None}
+    scope_hash = digest(scope)
+    row = (await db.execute(select(CMSCoverageSnapshot).where(CMSCoverageSnapshot.scope_sha256 == scope_hash).order_by(CMSCoverageSnapshot.completed_at.desc()).limit(1))).scalar_one_or_none()
+    attempt = await db.scalar(select(AuditLog).where(
+        AuditLog.event.in_(['CMS_POLICY_SYNC_COMPLETED', 'CMS_POLICY_SYNC_FAILED']),
+        AuditLog.metadata_json['scope_sha256'].as_string() == scope_hash,
+    ).order_by(AuditLog.timestamp.desc()).limit(1))
+    last_attempt = None if not attempt else {
+        'status': 'failed' if attempt.event.endswith('FAILED') else 'completed',
+        'timestamp': attempt.timestamp.isoformat(),
+        'reason_code': attempt.metadata_json.get('reason_code'),
+        'http_status': attempt.metadata_json.get('http_status'),
+    }
+    common = {'sync_enabled': settings.CMS_POLICY_SYNC_ENABLED, 'scope': scope, 'last_attempt': last_attempt}
     if not row:
-        return {'status': 'unavailable', 'records': 0}
+        return {**common, 'status': 'unavailable', 'records': 0, 'stale': True}
+    completed_at = row.completed_at.replace(tzinfo=timezone.utc) if row.completed_at.tzinfo is None else row.completed_at
     return {'status': 'available', 'last_synced_at': row.completed_at.isoformat(),
-            'records': len(row.records_json), 'scope': row.scope_json, 'sha256': row.sha256,
+            **common, 'records': len(row.records_json), 'sha256': row.sha256,
+            'stale': (datetime.now(timezone.utc) - completed_at).total_seconds() > settings.POLICY_CACHE_TTL_HOURS * 3600,
             'usage': 'Reference metadata only; does not establish coverage or medical necessity.'}
 
 OFFICIAL_REFERENCES: List[Dict[str, Any]] = [

@@ -9,9 +9,19 @@ export default function ReferencesPage() {
   const [references, setReferences] = useState<ReferenceItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [cmsStatus, setCmsStatus] = useState('Checking loaded CMS package…');
+  const [policyStatus, setPolicyStatus] = useState('Checking CMS policy refresh…');
 
 
   useEffect(() => {
+    api.getCMSPolicyStatus().then(status => {
+      const cache = status.status === 'available' ? `${status.records.toLocaleString()} cached metadata records${status.stale ? ' (stale)' : ''}.` : 'No policy metadata snapshot is available.';
+      const attempt = status.last_attempt;
+      const result = attempt?.reason_code === 'CMS_COUNTRY_RESTRICTED'
+        ? 'CMS rejected the latest refresh because access from this country is restricted. Contact the CMS Coverage API helpdesk or use a deployment permitted by CMS.'
+        : attempt?.status === 'failed' ? `Latest refresh failed${attempt.http_status ? ` (HTTP ${attempt.http_status})` : ''}; previous references retained.`
+        : attempt?.status === 'completed' ? 'Latest metadata refresh completed.' : 'No refresh result recorded for the configured scope.';
+      setPolicyStatus(`${status.sync_enabled ? 'Daily public CMS refresh enabled.' : 'Daily public CMS refresh disabled.'} ${result} ${cache} Metadata does not establish coverage or medical necessity.`);
+    }).catch(() => setPolicyStatus('CMS policy refresh status unavailable; sign in to view the latest result.'));
     api.getCapabilities().then(c => setCmsStatus(c.cms_references.status === 'available' ? `Loaded CMS ${c.cms_references.release}: ${Object.entries(c.cms_references.counts || {}).map(([key, count]) => `${count.toLocaleString()} ${key}`).join(' · ')}` : 'CMS reference package is not loaded.')).catch(() => setCmsStatus('CMS reference status unavailable.'));
     api.listReferences()
       .then(setReferences)
@@ -46,6 +56,7 @@ export default function ReferencesPage() {
       </div>
 
       <p className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-700">{cmsStatus}</p>
+      <p className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950" role="status">{policyStatus}</p>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {loading ? (
           <div className="col-span-2 text-center py-12 text-xs text-slate-400">
