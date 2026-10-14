@@ -33,7 +33,7 @@ def validate_dated_codes(candidates, service_date, rows):
     return findings
 
 
-async def catalog_findings(db, candidates, service_date):
+async def licensed_catalog_findings(db, candidates, service_date):
     if not settings.POLICY_SYNC_ENABLED:
         return []
     run = (await db.execute(select(CatalogSyncRun).order_by(CatalogSyncRun.sync_date.desc()).limit(1))).scalar_one_or_none()
@@ -51,3 +51,41 @@ async def catalog_findings(db, candidates, service_date):
     rows = (await db.execute(select(MedicalCodeCatalog).where(MedicalCodeCatalog.sync_run_id == run.id,
              MedicalCodeCatalog.code.in_({c['code'] for c in candidates})))).scalars().all()
     return validate_dated_codes(candidates, service_date, rows)
+
+
+def cms_fingerprint():
+    if not settings.CMS_REFERENCE_DB:
+        return None
+    from services.coding_engine.references.cms_store import CMSReferenceStore
+    return CMSReferenceStore(settings.CMS_REFERENCE_DB).fingerprint()
+
+
+def cms_findings(candidates, service_date, domain):
+    if not settings.CMS_REFERENCE_DB:
+        return []
+    from services.coding_engine.references.cms_store import CMSReferenceStore, ReferenceUnavailable
+    store = CMSReferenceStore(settings.CMS_REFERENCE_DB)
+    findings = []
+    try:
+        store.check_date(service_date)
+        for candidate in candidates:
+            if candidate['code_system'] == 'HCPCS':
+                try:
+                    store.hcpcs(candidate['code'], service_date)
+                except ReferenceUnavailable as exc:
+                    findings.append(ValidationFindingDto(stage='2_effective_date', severity='BLOCK', rule_id='CMS-HCPCS-VALIDITY', message=str(exc), candidate_code=candidate['code']))
+        # Review the professional set here; hospital pairs are checked separately on billing lines.
+        codes = {c['code'] for c in candidates if c['code_system'] in {'CPT', 'HCPCS'}}
+        for edit in store.ptp(codes, 'practitioner', service_date):
+            basis = 'No modifier bypass is allowed.' if edit['modifier'] == 0 else 'A separately substantiated modifier exception is required; automatic bypass is disabled.'
+            findings.append(ValidationFindingDto(stage='7_ncci', severity='BLOCK', rule_id='CMS-NCCI-PTP',
+                message=f"CMS PTP pair {edit['code1']}/{edit['code2']}: {basis}", candidate_code=edit['code2']))
+    except (ReferenceUnavailable, ValueError, KeyError) as exc:
+        findings.append(ValidationFindingDto(stage='7_ncci', severity='BLOCK', rule_id='CMS-REFERENCE-UNAVAILABLE', message=f'CMS references unavailable: {exc}'))
+    return findings
+
+
+async def catalog_findings(db, candidates, service_date, domain=None):
+    from starlette.concurrency import run_in_threadpool
+    findings = await licensed_catalog_findings(db, candidates, service_date)
+    return findings + await run_in_threadpool(cms_findings, candidates, service_date, domain)

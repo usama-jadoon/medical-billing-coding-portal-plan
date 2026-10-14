@@ -1,6 +1,7 @@
 import hashlib
 import uuid
 import json
+from starlette.concurrency import run_in_threadpool
 from typing import Dict, Any, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -82,6 +83,8 @@ async def run_encounter_pipeline(encounter_id: str, document_id: str, db: AsyncS
     ocr_provider = get_ocr_provider()
     ocr_result = await ocr_provider.process(doc_bytes, document.filename)
     snapshot.provenance_json = {**snapshot.provenance_json, "ocr_engine": ocr_result.ocr_engine, "ocr_version": ocr_result.ocr_version}
+    from services.worker.sync.validation import cms_fingerprint
+    snapshot.provenance_json = {**snapshot.provenance_json, 'cms_reference': await run_in_threadpool(cms_fingerprint)}
     if not any(page.text.strip() for page in ocr_result.pages):
         raise ValueError("No readable text. Configure a scanned-document OCR provider or upload a searchable PDF.")
 
@@ -134,6 +137,13 @@ async def run_encounter_pipeline(encounter_id: str, document_id: str, db: AsyncS
                     quote_hash=q_hash,
                     evidence_role="SUPPORT",
                 )
+                words = [word['bbox'] for word in source_page.word_spans
+                         if word['start'] < ef.evidence.end_offset and word['end'] > ef.evidence.start_offset]
+                if words:
+                    x, y = min(w['x'] for w in words), min(w['y'] for w in words)
+                    db_evidence.bbox_x, db_evidence.bbox_y = x, y
+                    db_evidence.bbox_w = max(w['x'] + w['width'] for w in words) - x
+                    db_evidence.bbox_h = max(w['y'] + w['height'] for w in words) - y
                 db.add(db_evidence)
                 await db.flush()
                 evidence_cache[ev_key] = db_evidence

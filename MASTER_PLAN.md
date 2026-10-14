@@ -1,6 +1,6 @@
 # US Medical Billing & AI Coding Portal
 
-Implementation roadmap and operating assumptions. Reviewed against the repository on October 13, 2026.
+Implementation roadmap and operating assumptions. Reviewed against the repository on October 14, 2026. Latest delivery: [FINAL_DELIVERY.md](docs/FINAL_DELIVERY.md).
 
 ## Purpose
 
@@ -16,9 +16,9 @@ The current implementation is a development web application served locally by Ne
 |---|---|
 | Single-screen upload and review | Implemented at `/encounters/new`; existing cases resume with `?case={id}` |
 | Facility suggestion | Source-text keyword suggestion for ED or office; ambiguous results remain unselected; manual confirmation required |
-| OCR/text input | Searchable PDF and UTF-8 text supported; Tesseract, scanned PDF and image OCR unavailable |
+| OCR/text input | Searchable PDF/text plus bounded local Tesseract OCR for images and scanned PDFs; engine availability reported by API |
 | Fact extraction | Deterministic local extraction active; external LLM processing is not active in the default workflow |
-| Candidate catalogs | Small development catalogs; full dated/licensed catalogs unavailable |
+| Candidate catalogs | Official 2026Q4 HCPCS and Medicare PTP/MUE reference package supported; clinical matchers remain bounded and proprietary catalogs need licensing |
 | Coding approval | Explicit selections, source verification, optimistic version checks and fresh reviewer authentication |
 | ER split billing | Explicit reviewer routing and revenue category selections, source spans and policy references; no automatic facility charge creation |
 | Excel export | In-memory professional and ED institutional worksheets, authenticated download and audit hash |
@@ -26,7 +26,7 @@ The current implementation is a development web application served locally by Ne
 | Session controls | Named-owner restriction available, optional TOTP, bounded sessions and fresh sign-in for approval/export |
 | Production mode | Intentionally disabled while development catalogs and controls are active |
 
-The latest completed verification included 72 backend tests, web lint/build, and a synthetic browser workflow from upload through dual-tab Excel download. This establishes development behavior, not clinical coding accuracy, payer acceptance or production readiness. Setup and implementation detail are in [IMPLEMENTATION.md](IMPLEMENTATION.md).
+The latest completed verification included 153 backend tests, web lint/build, and a synthetic browser workflow from upload through dual-tab Excel download. This establishes development behavior, not clinical coding accuracy, payer acceptance or production readiness. Setup and implementation detail are in [IMPLEMENTATION.md](IMPLEMENTATION.md).
 
 ## Workflow
 
@@ -35,7 +35,7 @@ The latest completed verification included 72 backend tests, web lint/build, and
 3. Retrieve catalog candidates and run deterministic development checks. Missing or unavailable policy stays visible.
 4. Inspect evidence and explicitly approve supported candidates as the authenticated reviewer.
 5. For ED, independently review professional and facility lines, diagnosis order, pointers, units, modifiers and facility resource evidence.
-6. Export the manual-entry workbook and signed manifest. Changed sources or coding approvals invalidate old billing reviews.
+6. Export the manual-entry workbook and integrity manifest. Changed sources or coding approvals invalidate old billing reviews.
 7. The biller separately verifies required claim data and enters/submits the claim in CollaborateMD using the organization's configured workflow.
 
 ## Required corrections to the supplied plan

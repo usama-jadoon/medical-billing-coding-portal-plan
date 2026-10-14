@@ -111,3 +111,16 @@ Implementation verification: a read-only probe of the four official CMS report
 endpoints from the development host returned HTTP 403. Live connectivity is
 therefore not established here; resolve deployment access before enabling sync.
 No licensed API credentials or payer adapters were supplied during implementation.
+
+## Independent public CMS refresh (v0.3)
+
+`CMS_POLICY_SYNC_ENABLED=true` enables public report refresh independently of
+`POLICY_SYNC_ENABLED`. Public completion is recorded as CMS_POLICY_SYNC_COMPLETED,
+never as licensed catalog completion. Migration 006 creates append-only public
+coverage snapshots. Reports without an explicit document status are labeled
+REFERENCE_ONLY; report membership never establishes active coverage.
+
+October 14 verification observed both HTTP 200 and subsequent HTTP 403 responses
+from the official service. The most recent refresh failed and was audited; no
+live completion is claimed. The configured Windows task retries failures up to
+three times at five-minute intervals. See FINAL_DELIVERY.md for setup and limits.

@@ -95,3 +95,5 @@ Dental should remain separate because CDT is ADA-owned/licensed.
 Daily licensed catalog and coverage synchronization is implemented as an opt-in
 UTC worker. Configuration, normalization adapter contracts, reference-date gates,
 and current live connectivity limitations are documented in [Policy sync](docs/POLICY_SYNC.md).
+
+Latest local delivery: [v0.3 handoff and remaining external acceptance](docs/FINAL_DELIVERY.md). Includes verified CMS reference import, local scanned-document OCR, independent public CMS refresh and backup/restore tooling.

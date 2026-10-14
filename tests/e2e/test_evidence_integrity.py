@@ -31,6 +31,34 @@ def selected_ids(review):
 
 
 @pytest.mark.asyncio
+async def test_reference_change_allows_reanalysis_of_identical_bytes(client, seed_data, db_session):
+    case_id, headers, source, review = await prepared_case(client, seed_data)
+    snapshot = await db_session.get(CaseSnapshot, review['snapshot_id'])
+    snapshot.provenance_json = {**snapshot.provenance_json, 'cms_reference': 'previous-package'}
+    await db_session.commit()
+    uploaded = await client.post(f'/api/cases/{case_id}/documents', headers=headers,
+                                files={'file': ('record.txt', source, 'text/plain')})
+    assert uploaded.status_code == 201, uploaded.text
+    latest = (await client.get(f'/api/cases/{case_id}/review', headers=headers)).json()
+    assert latest['snapshot_id'] != review['snapshot_id']
+    assert len(latest['documents']) == 2
+
+
+@pytest.mark.asyncio
+async def test_explicit_reanalysis_versions_the_source_and_checks_case_version(client, seed_data):
+    case_id, headers, source, review = await prepared_case(client, seed_data)
+    assert (await client.post(f'/api/cases/{case_id}/reanalyze', headers=headers,
+        json={'version': review['version'] + 1})).status_code == 409
+    result = await client.post(f'/api/cases/{case_id}/reanalyze', headers=headers,
+        json={'version': review['version']})
+    assert result.status_code == 201, result.text
+    latest = (await client.get(f'/api/cases/{case_id}/review', headers=headers)).json()
+    assert latest['snapshot_id'] != review['snapshot_id']
+    assert len(latest['documents']) == 2
+    assert latest['status'] == 'review_required'
+
+
+@pytest.mark.asyncio
 async def test_review_and_signed_export(client, seed_data):
     case_id, headers, _, review = await prepared_case(client, seed_data)
     for fact in review['clinical_facts']:

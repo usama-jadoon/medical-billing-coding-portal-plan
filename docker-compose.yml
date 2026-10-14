@@ -120,7 +120,7 @@ services:
     depends_on:
       - api
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - API_INTERNAL_URL=http://api:8000
     ports:
       - "3000:3000"
 

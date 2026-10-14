@@ -17,7 +17,7 @@ def next_midnight(now):
 
 
 async def sync_once():
-    if not settings.POLICY_SYNC_ENABLED:
+    if not settings.POLICY_SYNC_ENABLED and not settings.CMS_POLICY_SYNC_ENABLED:
         raise VerificationUnavailable('Daily policy sync is disabled. Configure licensed adapters before enabling it.')
     if settings.POLICY_SYNC_CRON != '0 0 * * *' or settings.POLICY_CACHE_TTL_HOURS <= 0:
         raise VerificationUnavailable('Supported schedule is 0 0 * * * UTC with a positive cache TTL.')
@@ -32,6 +32,12 @@ async def sync_once():
     except (ValueError, TypeError):
         raise VerificationUnavailable('Payer feed configuration is invalid.') from None
     async with httpx.AsyncClient() as client:
+        cms = CMSCoverageClient(client, contractor_id=settings.CMS_CONTRACTOR_ID, state_id=settings.CMS_STATE_ID)
+        if settings.CMS_POLICY_SYNC_ENABLED:
+            from services.worker.sync.cms_refresh import refresh_cms
+            result = await refresh_cms(async_session_factory, cms)
+            if not settings.POLICY_SYNC_ENABLED:
+                return result
         codes = VerificationAPI(client, provider=settings.MCA_CODE_API_PROVIDER,
             validity_url=settings.MCA_CODE_API_VALIDITY_URL, catalog_url=settings.MCA_CODE_API_CATALOG_URL,
             api_key=settings.MCA_CODE_API_KEY)

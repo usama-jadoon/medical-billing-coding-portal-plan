@@ -10,7 +10,7 @@ def test_fresh_schema_and_append_only_audit():
     engine = create_engine('sqlite:///:memory:')
     with engine.begin() as connection:
         with Operations.context(MigrationContext.configure(connection)):
-            for module in ('001_initial_schema', '002_evidence_workflow', '003_audit_and_provenance', '004_specialty_modifiers', '005_catalog_sync'):
+            for module in ('001_initial_schema', '002_evidence_workflow', '003_audit_and_provenance', '004_specialty_modifiers', '005_catalog_sync', '006_cms_coverage'):
                 importlib.import_module('services.api.db.migrations.versions.' + module).upgrade()
         assert {'version', 'active_snapshot_id'} <= {c['name'] for c in inspect(connection).get_columns('encounters')}
         assert 'provenance_json' in {c['name'] for c in inspect(connection).get_columns('case_snapshots')}

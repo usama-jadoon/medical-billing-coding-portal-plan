@@ -33,9 +33,11 @@ class CMSCoverageClient(RestClient):
                 for row in payload['data']:
                     if not isinstance(row, dict) or row.get('document_id') is None or row.get('document_version') is None:
                         raise ValueError('Missing document identity')
-                    status = row.get('document_status')
-                    if kind != 'LOCAL_UPDATE' and (not isinstance(status, str) or not status):
-                        raise ValueError('Missing coverage status')
+                    # Current public reports expose dates but often no status.
+                    # Report membership is not evidence of active coverage.
+                    status = row.get('document_status') or 'REFERENCE_ONLY'
+                    if not isinstance(status, str):
+                        raise ValueError('Malformed coverage status')
                     records.append({'source': 'CMS', 'document_type': kind,
                                     'document_id': str(row['document_id']), 'version': str(row['document_version']),
                                     'status': status or 'UPDATE_NOTICE', 'payload': row})
